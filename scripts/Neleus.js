@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.46
+// @version        0.47
 // @include        /^https{0,1}:\/\/((www|qrator|my)\.(heroeswm|lordswm)\.(ru|com)|178\.248\.235\.15)\/(war|warlog|leader_guild|leader_army|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -1246,7 +1246,7 @@
             stage.pole.obj[k].building != undefined
           )
             continue
-          sHP[ow] += stage.pole.obj[k].maxnumber * stage.pole.obj[k].maxhealth
+          sHP[ow] += stage.pole.obj[k].maxnumber * stage.pole.obj[k].realhealth
           nHP[ow] +=
             Math.max(stage.pole.obj[k].nownumber - 1, 0) *
               stage.pole.obj[k].maxhealth +
