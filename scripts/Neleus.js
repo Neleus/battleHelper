@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.47
+// @version        0.48
 // @include        /^https{0,1}:\/\/((www|qrator|my)\.(heroeswm|lordswm)\.(ru|com)|178\.248\.235\.15)\/(war|warlog|leader_guild|leader_army|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -445,6 +445,15 @@
       location.pathname.indexOf("warlog.php") >= 0) &&
     location.href.indexOf("show_enemy") == -1
   ) {
+    let lastMagic_button = document.createElement("div")
+    lastMagic_button.style.display = "none"
+    lastMagic_button.id = "lastMagic_button"
+    lastMagic_button.className = "toolbars_img"
+    lastMagic_button.innerHTML =
+      "<img id = 'lastMagicSrc' src='' style = 'background-image: url(https://daily.heroeswm.ru/i/lastMagic_button.png);background-size: contain;'>"
+    document.querySelector("#magicbook_button_close").after(lastMagic_button)
+    var like_flash = false
+    updateOrientation()
     var timerIdn = setInterval(check, 100)
   }
   function check() {
@@ -457,9 +466,310 @@
       typeof unsafeWindow.stage.pole.onMouseMoveFlash === "function"
     ) {
       clearInterval(timerIdn)
-      if (typeof unsafeWindow.setshadAbs !== "undefined") {
+      if (typeof unsafeWindow.lastMagic_button_release !== "undefined") {
         return 0
       }
+
+      unsafeWindow.hide_war_buttons = function (hide_all) {
+        //скрываем кнопку вместе с остальными
+        //			info_button = false;
+        shift_button = false
+        hide_button("scroll_runes")
+        hide_button("oneskill_button")
+        hide_button("oneskill_button")
+        hide_button("oneskill_button_close")
+        hide_button("btn_expand")
+        hide_button("btn_collapse")
+        hide_button("lastMagic_button")
+        hide_button("rune_off_button")
+        //			hide_button('btn_defeat');
+        btn_defeat = 0
+        hide_button("shift_on")
+        hide_button("shift_off")
+        //			if (inserted) hide_button('info_on');
+        //			hide_button('info_off');
+        hide_button("rune_button")
+        hide_button("win_RunesDesktop")
+        hide_button("btn_runesDesktop")
+        if (hide_all) {
+          hide_button("wait_button")
+          hide_button("defend_button")
+          hide_button("wait_button2")
+          hide_button("defend_button2")
+        } else {
+          disable_button("wait_button")
+          disable_button("defend_button")
+          disable_button("wait_button2")
+          disable_button("defend_button2")
+        }
+
+        hide_button("confirm_todo")
+        hide_button("cancel_todo")
+        hide_button("magic_book")
+        hide_button("magicbook_button")
+        hide_button("magicbook_button_close")
+        hide_button("magicbook_button2")
+        hide_button("magicbook_button_close2")
+        if (android) show_coords(0, 0)
+
+        if (typeof mini_info_panel !== "undefined") {
+          set_visible(mini_info_panel, 0)
+          if (btype == 20 || btype == _SURVIVAL_GNOM || btype == _2SURVIVAL) {
+            stage[war_scr].showmitnv()
+          }
+        }
+      }
+
+      unsafeWindow.spell_button_release = function (b) {
+        //записываем заклинание в lastMagicUse и lastMagicUse_powered у существа
+        if (btype == 87) return 0
+        var cast = spell_id[b]
+        book_closed_timer = Date.now()
+        //	hide_magic_book();
+        hide_button("magic_book")
+        magicuse = cast
+        need_hide_hint_arrow = false
+
+        if (magic_book_hints && (cast == "raisedead" || cast == "fast")) {
+          stage[war_scr].hide_hint_arrow_data()
+          if (cast == "fast") {
+            stage[war_scr].show_fast_hints()
+          }
+          need_hide_hint_arrow = true
+        }
+
+        if (cast == "raisedead" || cast == "resurrection") {
+          stage[war_scr].showraisedead()
+        }
+        if (cast == "zakarrow") {
+          zakarrow = true
+          bookpage = 0
+          stage[war_scr].checkpage()
+          stage[war_scr].showmagicbook(0, 1)
+          show_button("magic_book")
+          return 0
+        }
+
+        stage.pole.obj[activeobj]["lastMagicUse"] = magicuse
+        stage.pole.obj[activeobj]["lastMagicUse_powered"] = spell_powered[b]
+
+        console.log("lastMagicUse =", stage.pole.obj[activeobj]["lastMagicUse"])
+
+        if (
+          cast == "explosion" ||
+          cast == "manafeed" ||
+          cast == "invisibility" ||
+          cast == "summonel" ||
+          cast == "earthquake" ||
+          cast == "rallingcry" ||
+          cast == "battlecry" ||
+          cast == "summonphoenix" ||
+          cast == "siphonmana" ||
+          cast == "benediction" ||
+          cast == "channeling" ||
+          cast == "invisible" ||
+          cast == "summonel_f" ||
+          cast == "summonel_e" ||
+          cast == "summonel_a" ||
+          cast == "summonel_w" ||
+          cast == "elfshot" ||
+          cast.substr(0, 14) == "summoncreature"
+        ) {
+          magicuse = ""
+          var cast_use = cast
+          if (cast == "invisibility") cast_use = "invisible"
+          stage[war_scr].custommagic(cast_use)
+          hide_magic_book()
+        }
+        if (cast == "satyrmorale") magicuse = "moraler"
+        if (cast == "summonpitlords") magicuse = "summonpit"
+        if (cast == "leap") {
+          stage[war_scr].showleap()
+        }
+        if (cast == "leap6") {
+          stage[war_scr].showleap()
+        }
+        carryo = -1
+        magicpower = spell_powered[b]
+
+        if (spelldamng.includes(cast)) checkmagicbook()
+      }
+
+      unsafeWindow.onkeydown = function (e) {
+        //добавляем хоткеи на shift C и F
+        if (typeof keys === "undefined") return 0
+
+        if (
+          ((event.shiftKey && event.code === "KeyC") ||
+            event.code === "KeyF") &&
+          typeof buttons_visible !== "undefined" &&
+          buttons_visible["lastMagic_button"]
+        ) {
+          lastMagic_button_release()
+          return 0
+        }
+
+        if (
+          typeof keys[e.keyCode] !== "undefined" &&
+          !keys[e.keyCode] &&
+          keys[e.keyCode] != -1
+        ) {
+          if (shift_ok && e.keyCode == 16) {
+            shift_onRelease()
+          }
+          if (
+            e.keyCode == 17 &&
+            typeof buttons_visible !== "undefined" &&
+            (buttons_visible["info_off"] || buttons_visible["info_on"])
+          ) {
+            info_onRelease()
+          }
+        } else {
+          if (keys[e.keyCode] == -1) return 0
+        }
+        if (!keys[e.keyCode]) check_keys(e.keyCode)
+        keys[e.keyCode] = true
+        movecounter = 0
+
+        if (typeof stage === "undefined") return 0
+        if (typeof stage[war_scr] === "undefined") return 0
+        if (typeof stage[war_scr].onMouseMoveFlash !== "function") return 0
+        stage[war_scr].onMouseMoveFlash(false, mousePos.x, mousePos.y, 1)
+        movemouse = true
+      }
+
+      unsafeWindow.lastMagic_button_release = function () {
+        stage.pole.lastMagic_button_onRelease()
+      }
+
+      if (document.getElementById("lastMagic_button")) {
+        document
+          .getElementById("lastMagic_button")
+          .addEventListener("mouseup", lastMagic_button_release)
+      }
+
+      unsafeWindow.stage.pole.lastMagic_button_onRelease = function () {
+        if (
+          buttons_visible["magicbook_button_close"] ||
+          buttons_visible["magicbook_button_close2"]
+        ) {
+          hide_magic_book()
+          return 0
+        }
+        show_button("magic_book")
+        if (classic_chat) {
+          show_button("magicbook_button_close2")
+        } else {
+          show_button("magicbook_button_close")
+        }
+        hide_button("magicbook_button")
+        hide_button("magicbook_button2")
+        unsafeWindow.spell_button_release(0)
+      }
+
+      show_war_buttons = function () {
+        //		hide_div_arrow("wait_button");
+        if (firstbattle) {
+          stage[war_scr].commandsproc()
+        }
+        if (buttons_visible["win_Mission"]) return 0
+        if (bt_restricted) return 0
+        if (fast_battle_off) {
+          hide_war_buttons(1)
+          return 0
+        }
+        if (info_button) {
+          hide_button("info_on")
+          show_button("info_off")
+          check_i_pressed_level()
+        } else {
+          show_button("info_on")
+          if (test_mode) show_button("pause_button")
+          hide_button("info_off")
+        }
+        check_fast_but()
+        if (command != "") return 0
+        if (activeobj == 0) return 0
+
+        shift_ok = false
+        stage[war_scr].checkthrower(activeobj)
+        if (
+          stage[war_scr].obj[activeobj].lastMagicUse &&
+          magicbookspells.includes(
+            stage[war_scr].obj[activeobj].lastMagicUse
+          ) &&
+          stage.pole.showmagicbook(
+            0,
+            0,
+            true,
+            stage[war_scr].obj[activeobj].lastMagicUse
+          )
+        ) {
+          document.getElementById("lastMagicSrc").src =
+            "https://daily.heroeswm.ru/i/magicbook/" +
+            stage[war_scr].obj[activeobj].lastMagicUse +
+            ".png"
+          show_button("lastMagic_button")
+          spell_id[0] = stage[war_scr].obj[activeobj].lastMagicUse
+          spell_powered[0] = stage[war_scr].obj[activeobj].lastMagicUse_powered
+        } else {
+          hide_button("lastMagic_button")
+        }
+
+        if (
+          ((stage[war_scr].obj[activeobj].shooter &&
+            stage[war_scr].obj[activeobj].shots > 0) ||
+            stage[war_scr].obj[activeobj].strikeandreturn) &&
+          !stage[war_scr].obj[activeobj].hero &&
+          !finished &&
+          stage[war_scr].get_unit_speed(activeobj) > 0 &&
+          !stage[war_scr].obj[activeobj].shootonly
+        ) {
+          if (
+            stage[war_scr].obj[activeobj].strikeandreturn ||
+            stage[war_scr].check_possible_attack() ||
+            stage[war_scr].obj[activeobj].getside() !=
+              stage[war_scr].obj[activeobj].side
+          ) {
+            shift_ok = true
+            shift_button = false
+            if (!classic_chat) {
+              show_button("shift_on")
+            }
+            hide_button("shift_off")
+          } else {
+            shift_ok = false
+            hide_button("shift_on")
+            hide_button("shift_off")
+          }
+        }
+        stage[war_scr].calcpossiblemagic()
+
+        if (command == "") stage[war_scr].checkrune(activeobj)
+
+        if (!battle_ended) {
+          if (
+            btype == _QUESTWAR ||
+            btypeold == _UNIGUILD ||
+            btypeold == _CAMPAIGN_WAR
+          ) {
+            btn_defeat = 0
+            show_button("btn_defeat")
+          }
+          if (classic_chat) {
+            show_button("wait_button2")
+            show_button("defend_button2")
+          } else {
+            show_button("wait_button")
+            show_button("defend_button")
+          }
+        }
+
+        if (android) {
+          check_expand()
+        }
+      }
+
       unsafeWindow.spell_type = {
         raisedead: "1",
         magicfist: "1",
@@ -527,7 +837,12 @@
           }
         }
       }
-      stage.pole.showmagicbook = function (page, iszak, check_spell) {
+      stage.pole.showmagicbook = function (
+        page,
+        iszak,
+        check_spell,
+        oneCheckPossibleSpell = ""
+      ) {
         let actMiniSpells = hwm_set["miniSpells"]
         spell_per_page = actMiniSpells ? 16 : 6
         var cm = magicbookspells_new.length
@@ -605,7 +920,12 @@
         lastpage = page
         if (iszak != 1) zakarrow = false
 
-        function proccedinbook(so, powered, showed_cnt) {
+        function proccedinbook(
+          so,
+          powered,
+          showed_cnt,
+          oneCheckPossibleSpell = ""
+        ) {
           if (
             so == "zakarrow" &&
             (zakarrow == true ||
@@ -687,7 +1007,9 @@
             var disabled = true
           } else {
             var disabled = false
-            was_spell = 1
+            if (!oneCheckPossibleSpell || s == oneCheckPossibleSpell) {
+              was_spell = 1
+            }
           }
           if (check_spell) {
             return 0
@@ -966,7 +1288,7 @@
                 continue
               }
               showed_cnt++
-              proccedinbook(s, 0, showed_cnt)
+              proccedinbook(s, 0, showed_cnt, oneCheckPossibleSpell)
             }
             if (
               this.obj[activeobj][s] == 1 ||
