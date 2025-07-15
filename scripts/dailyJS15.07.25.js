@@ -17,7 +17,7 @@ if (location.pathname.indexOf("leader_guild.php") >= 0) {
 			hp += turnId[id].hp*count;
 		}
 		if ((checkSum > 0) && (hp > 0)) {
-			tr[i].querySelector("td").innerHTML += "<div style = 'margin-left:10px'><a href = 'https://daily.heroeswm.ru/leader/bandits.php?hp=" + hp + "&sum=" + checkSum + "'>Поиск боя на Daily (beta)</a></div>";
+			tr[i].querySelector("td").innerHTML += "<div style = 'margin-left:10px'><a href = 'https://daily.heroeswm.ru/leader/bandits.php?hp=" + hp + "&sum=" + checkSum + "'>РџРѕРёСЃРє Р±РѕСЏ РЅР° Daily (beta)</a></div>";
 		}
 	}
 }
@@ -47,7 +47,7 @@ if (((location.pathname.indexOf("war.php") >= 0)||(location.pathname.indexOf("wa
 				return 0;
 			}
 
-			window.hide_war_buttons = function(hide_all) {//скрываем кнопку вместе с остальными
+			window.hide_war_buttons = function(hide_all) {//СЃРєСЂС‹РІР°РµРј РєРЅРѕРїРєСѓ РІРјРµСЃС‚Рµ СЃ РѕСЃС‚Р°Р»СЊРЅС‹РјРё
 				//			info_button = false;
 				shift_button = false;
 				hide_button('scroll_runes');
@@ -96,7 +96,7 @@ if (((location.pathname.indexOf("war.php") >= 0)||(location.pathname.indexOf("wa
 				};
 			};
 			
-			window.spell_button_release = function(b) {//записываем заклинание в lastMagicUse и lastMagicUse_powered у существа
+			window.spell_button_release = function(b) {//Р·Р°РїРёСЃС‹РІР°РµРј Р·Р°РєР»РёРЅР°РЅРёРµ РІ lastMagicUse Рё lastMagicUse_powered Сѓ СЃСѓС‰РµСЃС‚РІР°
 				if (btype == 87) return 0;
 				var cast = spell_id[b];
 				book_closed_timer = Date.now();
@@ -154,7 +154,7 @@ if (((location.pathname.indexOf("war.php") >= 0)||(location.pathname.indexOf("wa
 				if (spelldamng.includes(cast)) checkmagicbook();
 			};
 
-			window.onkeydown = function(e) {//добавляем хоткеи на shift C и F
+			window.onkeydown = function(e) {//РґРѕР±Р°РІР»СЏРµРј С…РѕС‚РєРµРё РЅР° shift C Рё F
 				if (typeof keys === 'undefined') return 0;
 				
 				if (((event.shiftKey && event.code === 'KeyC') || (event.code === 'KeyF')) && (typeof buttons_visible !== 'undefined') && (buttons_visible['lastMagic_button'])) {
@@ -299,7 +299,7 @@ if (((location.pathname.indexOf("war.php") >= 0)||(location.pathname.indexOf("wa
 				if ((powered) || (is_day_or_night(activeobj, s))) {
 					switch (lang) {
 						case 0:
-							nametxt += ' (усиленное)';
+							nametxt += ' (СѓСЃРёР»РµРЅРЅРѕРµ)';
 							break;
 						case 1:
 							nametxt += ' (empowered)';
