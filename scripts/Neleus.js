@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.48
+// @version        0.49
 // @include        /^https{0,1}:\/\/((www|qrator|my)\.(heroeswm|lordswm)\.(ru|com)|178\.248\.235\.15)\/(war|warlog|leader_guild|leader_army|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -440,6 +440,7 @@
       }
     }
   }
+  var like_flash = false
   if (
     (location.pathname.indexOf("war.php") >= 0 ||
       location.pathname.indexOf("warlog.php") >= 0) &&
@@ -452,7 +453,6 @@
     lastMagic_button.innerHTML =
       "<img id = 'lastMagicSrc' src='' style = 'background-image: url(https://daily.heroeswm.ru/i/lastMagic_button.png);background-size: contain;'>"
     document.querySelector("#magicbook_button_close").after(lastMagic_button)
-    var like_flash = false
     updateOrientation()
     var timerIdn = setInterval(check, 100)
   }
