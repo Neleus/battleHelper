@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.49
+// @version        0.50
 // @include        /^https{0,1}:\/\/((www|qrator|my)\.(heroeswm|lordswm)\.(ru|com)|178\.248\.235\.15)\/(war|warlog|leader_guild|leader_army|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -436,7 +436,7 @@
         hp += turnId[id].hp * count
       }
       if (checkSum > 0 && hp > 0) {
-        // tr[i].querySelector("td").innerHTML += "<div style = 'margin-left:10px'><a href = 'https://daily.heroeswm.ru/leader/bandits.php?hp=" + hp + "&sum=" + checkSum + "'>Поиск боя на Daily</a></div>";
+        // tr[i].querySelector("td").innerHTML += "<div style = 'margin-left:10px'><a href = 'https://daily.lordswm.com/leader/bandits.php?hp=" + hp + "&sum=" + checkSum + "'>Поиск боя на Daily</a></div>";
       }
     }
   }
@@ -451,7 +451,7 @@
     lastMagic_button.id = "lastMagic_button"
     lastMagic_button.className = "toolbars_img"
     lastMagic_button.innerHTML =
-      "<img id = 'lastMagicSrc' src='' style = 'background-image: url(https://daily.heroeswm.ru/i/lastMagic_button.png);background-size: contain;'>"
+      "<img id = 'lastMagicSrc' src='' style = 'background-image: url(https://daily.lordswm.com/i/lastMagic_button.png);background-size: contain;'>"
     document.querySelector("#magicbook_button_close").after(lastMagic_button)
     updateOrientation()
     var timerIdn = setInterval(check, 100)
@@ -706,7 +706,7 @@
           )
         ) {
           document.getElementById("lastMagicSrc").src =
-            "https://daily.heroeswm.ru/i/magicbook/" +
+            "https://daily.lordswm.com/i/magicbook/" +
             stage[war_scr].obj[activeobj].lastMagicUse +
             ".png"
           show_button("lastMagic_button")
@@ -1606,7 +1606,7 @@
             h +
             "px;'><img align='absmiddle' height = '" +
             (h - 4) +
-            "px' src = 'https://dcdn.heroeswm.ru/i/icons/attr_morale.png'>&#8201;" +
+            "px' src = 'https://dcdn.lordswm.com/i/icons/attr_morale.png'>&#8201;" +
             stage.pole.luckMoralePerc(i, "morale") +
             "</div>"
         }
@@ -1618,7 +1618,7 @@
             h +
             "px;'><img align='absmiddle' height = '" +
             (h - 4) +
-            "px' src = 'https://dcdn.heroeswm.ru/i/icons/attr_fortune.png'>&#8201;" +
+            "px' src = 'https://dcdn.lordswm.com/i/icons/attr_fortune.png'>&#8201;" +
             stage.pole.luckMoralePerc(i, "luck") +
             "</div>"
         }
@@ -7778,7 +7778,7 @@
     }
     let sDiv = document.createElement("div")
     let sImg = document.createElement("img")
-    sImg.setAttribute("src", "https://daily.heroeswm.ru/i/search_logo.png")
+    sImg.setAttribute("src", "https://daily.lordswm.com/i/search_logo.png")
     sImg.setAttribute("class", "inv_100mwmh")
     sDiv.append(sImg)
     sDiv.classList.add("divs_inline_right_24")
