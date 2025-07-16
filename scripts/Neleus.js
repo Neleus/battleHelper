@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.51
+// @version        0.52
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -11,7 +11,7 @@
 // ==/UserScript==
 
 ;(function () {
-  var like_flash = false
+  unsafeWindow.like_flash = false
   if (
     (location.pathname.indexOf("war.php") >= 0 ||
       location.pathname.indexOf("warlog.php") >= 0) &&
@@ -24,6 +24,20 @@
     lastMagic_button.innerHTML =
       "<img id = 'lastMagicSrc' src='' style = 'background-image: url(https://daily.lordswm.com/i/lastMagic_button.png);background-size: contain;'>"
     document.querySelector("#magicbook_button_close").after(lastMagic_button)
+
+    // Добавляем обработчик для чекбокса "Узкое поле"
+    setTimeout(() => {
+      const likeFlashCheckbox = document.getElementById("like_flash_checkbox")
+      if (likeFlashCheckbox) {
+        likeFlashCheckbox.addEventListener("change", function () {
+          unsafeWindow.like_flash = this.checked
+          if (typeof unsafeWindow.updateOrientation === "function") {
+            unsafeWindow.updateOrientation()
+          }
+        })
+      }
+    }, 100)
+
     updateOrientation()
     var timerIdn = setInterval(check, 100)
   }
