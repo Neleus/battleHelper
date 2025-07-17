@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.52
+// @version        0.53
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -11,7 +11,6 @@
 // ==/UserScript==
 
 ;(function () {
-  unsafeWindow.like_flash = false
   if (
     (location.pathname.indexOf("war.php") >= 0 ||
       location.pathname.indexOf("warlog.php") >= 0) &&
@@ -29,14 +28,24 @@
     setTimeout(() => {
       const likeFlashCheckbox = document.getElementById("like_flash_checkbox")
       if (likeFlashCheckbox) {
+        // Устанавливаем начальное состояние чекбокса из сохраненного значения
+        const savedValue = localStorage.getItem("like_flash")
+        likeFlashCheckbox.checked = savedValue === "true"
+
         likeFlashCheckbox.addEventListener("change", function () {
           unsafeWindow.like_flash = this.checked
+          localStorage.setItem("like_flash", this.checked)
+          hwm_set["like_flash"] = this.checked
           if (typeof unsafeWindow.updateOrientation === "function") {
             unsafeWindow.updateOrientation()
           }
         })
       }
     }, 100)
+
+    // Инициализируем like_flash перед вызовом updateOrientation()
+    const savedLikeFlash = localStorage.getItem("like_flash")
+    unsafeWindow.like_flash = savedLikeFlash === "true"
 
     updateOrientation()
     var timerIdn = setInterval(check, 100)
@@ -968,6 +977,7 @@
         miniSpells: false,
         atbStartDisplay: false,
         spellsOrder: false,
+        like_flash: false,
       }
       for (i in hwm_set) {
         hwm_set[i] = localStorage.getItem(i)
