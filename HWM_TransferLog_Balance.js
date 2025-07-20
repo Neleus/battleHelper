@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name			HWM TransferLog Balance
+// @name			TransferLog balance
 // @author			Neleus
 // @namespace		Neleus
 // @description	HWM TransferLog Balance
-// @version			1.0
+// @version			1.1
 // @include			/^https?:\/\/(www|mirror|my)?\.?(heroeswm|lordswm)\.(ru|com)\/pl_transfers\.php.*/
 // @grant			none
 // @run-at			document-end
