@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.57
+// @version        0.58
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -7415,7 +7415,6 @@
         onload: function (res) {
           let info =
             "<style>.cont{position:relative;display:inline-block}.count {position: absolute;right: 0;bottom: 0;color: #f5c140;text-shadow: 0px 0px 3px #000, 0px 0px 3px #000, 0px 0px 3px #000, 0px 0px 3px #000;font-size: 1rem;font-weight: bold;}</style>"
-          info += "<b>Стартовый бонус АТБ</b><BR>"
           if (res.responseText == "t=950turns=") {
             if (r == 1) {
               info += "Ошибка загрузки, начните бой и обновите страницу!"
@@ -7457,10 +7456,31 @@
           let elem = []
           elem[0] = document.querySelector("#chat_format")
           elem[1] = document.querySelector("#chat_format_classic")
-          elem[0].innerHTML =
-            elem[0].innerHTML + "<div class = 'atb-info'>" + info + "</div>"
-          elem[1].innerHTML =
-            elem[1].innerHTML + "<div class = 'atb-info'>" + info + "</div>"
+          const atbDiv0 = document.createElement("div")
+          atbDiv0.className = "atb-info"
+          atbDiv0.innerHTML = info
+
+          const atbDiv1 = document.createElement("div")
+          atbDiv1.className = "atb-info"
+          atbDiv1.innerHTML = info
+
+          // Добавляем после всех HP баров
+          const hpBars0 = elem[0].querySelectorAll(".hp")
+          const hpBars1 = elem[1].querySelectorAll(".hp")
+
+          if (hpBars0.length > 0) {
+            const lastHpBar0 = hpBars0[hpBars0.length - 1]
+            lastHpBar0.insertAdjacentElement("afterend", atbDiv0)
+          } else {
+            elem[0].appendChild(atbDiv0)
+          }
+
+          if (hpBars1.length > 0) {
+            const lastHpBar1 = hpBars1[hpBars1.length - 1]
+            lastHpBar1.insertAdjacentElement("afterend", atbDiv1)
+          } else {
+            elem[1].appendChild(atbDiv1)
+          }
           setAtbStyle()
         },
       })
