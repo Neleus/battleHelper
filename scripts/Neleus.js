@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.54
+// @version        0.55
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -300,7 +300,7 @@
           )
         ) {
           document.getElementById("lastMagicSrc").src =
-            "https://daily.lordswm.com/i/combat/magicbook/" +
+            "https://my.lordswm.com/i/combat/magicbook/" +
             stage[war_scr].obj[activeobj].lastMagicUse +
             ".png"
           show_button("lastMagic_button")
