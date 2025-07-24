@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.56
+// @version        0.57
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -978,21 +978,16 @@
         spellsOrder: false,
         like_flash: false,
       }
-      for (i in hwm_set) {
-        hwm_set[i] = localStorage.getItem(i)
-        if (
-          hwm_set[i] === null ||
-          hwm_set[i] === undefined ||
-          hwm_set[i] === "1" ||
-          hwm_set[i] === "0" ||
-          hwm_set[i] === 1 ||
-          hwm_set[i] === 0
-        ) {
+      for (let i in hwm_set) {
+        const savedValue = localStorage.getItem(i)
+        if (savedValue === null || savedValue === undefined) {
           hwm_set[i] = false
+        } else {
+          hwm_set[i] = savedValue === "true"
         }
       }
       unsafeWindow.checkTrue = function (name) {
-        return hwm_set[name] === true || hwm_set[name] === "true"
+        return hwm_set[name] === true
       }
       unsafeWindow.setAtbStyle = function () {
         let elems = document.getElementsByClassName("atb-info")
@@ -1004,11 +999,10 @@
       }
       setAtbStyle()
       unsafeWindow.checkSet = function (name) {
-        document.getElementById(name + "_checkbox").checked = checkTrue(name)
-          ? true
-          : false
-        localStorage.setItem(name, checkTrue(name) ? false : true)
-        hwm_set[name] = checkTrue(name) ? false : true
+        const checkbox = document.getElementById(name + "_checkbox")
+        const newValue = checkbox.checked
+        localStorage.setItem(name, newValue.toString())
+        hwm_set[name] = newValue
         if (name == "atbStartDisplay") {
           setAtbStyle()
         }
@@ -1052,9 +1046,9 @@
       }
       div = document.createElement("div")
       div.innerHTML =
-        "<div class='info_row' id='atb-start-bonus' onmouseup = 'checkSet(\"atbStartDisplay\")'><label class='checkbox_container'>Стартовый бонус АТБ<input type='checkbox'" +
+        "<div class='info_row' id='atb-start-bonus'><label class='checkbox_container'>Стартовый бонус АТБ<input type='checkbox'" +
         (checkTrue("atbStartDisplay") ? " checked " : "") +
-        "id='atbStartDisplay_checkbox'><span class='checkbox_checkmark'></span></label></div><br>"
+        "id='atbStartDisplay_checkbox' onchange='checkSet(\"atbStartDisplay\")'><span class='checkbox_checkmark'></span></label></div><br>"
       document
         .getElementById("win_Settings")
         .getElementsByTagName("form")[0]
@@ -7463,12 +7457,11 @@
           let elem = []
           elem[0] = document.querySelector("#chat_format")
           elem[1] = document.querySelector("#chat_format_classic")
-          //elem[0].innerHTML = info + elem[0].innerHTML;
-          //elem[1].innerHTML = info + elem[1].innerHTML;
           elem[0].innerHTML =
-            "<div class = 'atb-info'>" + info + "</div>" + elem[0].innerHTML
+            elem[0].innerHTML + "<div class = 'atb-info'>" + info + "</div>"
           elem[1].innerHTML =
-            "<div class = 'atb-info'>" + info + "</div>" + elem[1].innerHTML
+            elem[1].innerHTML + "<div class = 'atb-info'>" + info + "</div>"
+          setAtbStyle()
         },
       })
     }
