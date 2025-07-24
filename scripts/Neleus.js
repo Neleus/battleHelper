@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.58
+// @version        0.59
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -19,8 +19,8 @@
     let lastMagic_button = document.createElement("div")
     lastMagic_button.style.display = "none"
     lastMagic_button.id = "lastMagic_button"
-    lastMagic_button.className = "toolbars_img"
-    lastMagic_button.innerHTML = "<img id = 'lastMagicSrc' src='' >"
+    lastMagic_button.className = "toolbars_mobile_img"
+    lastMagic_button.innerHTML = "<img id='lastMagicSrc' src=''>"
     document.querySelector("#magicbook_button_close").after(lastMagic_button)
 
     // Добавляем обработчик для чекбокса "Узкое поле"
