@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.59
+// @version        0.60
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -61,6 +61,14 @@
       clearInterval(timerIdn)
       if (typeof unsafeWindow.lastMagic_button_release !== "undefined") {
         return 0
+      }
+
+      // Функция для получения CDN домена
+      const getCdnDomain = () => {
+        const hostname = window.location.hostname
+        const parts = hostname.split(".")
+        const baseDomain = parts.slice(-2).join(".") // берем последние 2 части (lordswm.com, heroeswm.ru)
+        return `${window.location.protocol}//dcdn.${baseDomain}`
       }
 
       unsafeWindow.hide_war_buttons = function (hide_all) {
@@ -298,10 +306,9 @@
             stage[war_scr].obj[activeobj].lastMagicUse
           )
         ) {
-          document.getElementById("lastMagicSrc").src =
-            "https://my.lordswm.com/i/combat/magicbook/" +
-            stage[war_scr].obj[activeobj].lastMagicUse +
-            ".png"
+          document.getElementById(
+            "lastMagicSrc"
+          ).src = `${window.location.origin}/i/combat/magicbook/${stage[war_scr].obj[activeobj].lastMagicUse}.png`
           show_button("lastMagic_button")
           spell_id[0] = stage[war_scr].obj[activeobj].lastMagicUse
           spell_powered[0] = stage[war_scr].obj[activeobj].lastMagicUse_powered
@@ -1194,7 +1201,7 @@
             h +
             "px;'><img align='absmiddle' height = '" +
             (h - 4) +
-            "px' src = 'https://dcdn.lordswm.com/i/icons/attr_morale.png'>&#8201;" +
+            `px' src = '${getCdnDomain()}/i/icons/attr_morale.png'>&#8201;` +
             stage.pole.luckMoralePerc(i, "morale") +
             "</div>"
         }
@@ -1206,7 +1213,7 @@
             h +
             "px;'><img align='absmiddle' height = '" +
             (h - 4) +
-            "px' src = 'https://dcdn.lordswm.com/i/icons/attr_fortune.png'>&#8201;" +
+            `px' src = '${getCdnDomain()}/i/icons/attr_fortune.png'>&#8201;` +
             stage.pole.luckMoralePerc(i, "luck") +
             "</div>"
         }
