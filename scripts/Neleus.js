@@ -3,8 +3,11 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.63
-// @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog).php/
+// @version        0.64
+// @include        https://www.heroeswm.ru/war.php*
+// @include        https://mirror.heroeswm.ru/war.php*
+// @include        https://lordswm.com/war.php*
+// @include        https://my.lordswm.com/war.php*
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
 // @license        GNU GPLv3
