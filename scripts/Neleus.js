@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.60
+// @version        0.61
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -2679,7 +2679,8 @@
           magicuse != "incinerate" &&
           magicuse != "leap" &&
           magicuse != "leap6" &&
-          magicuse != "harpoonstrike"
+          magicuse != "harpoonstrike" &&
+          magicuse != "quickshots"
         ) {
           k = magicuse
         }
@@ -5342,7 +5343,8 @@
                 magicuse == "orderofchief" ||
                 magicuse == "leap" ||
                 magicuse == "leap6" ||
-                magicuse == "incinerate"
+                magicuse == "incinerate" ||
+                magicuse == "quickshots"
               ) {
                 if (
                   magicuse == "leap" ||
@@ -5353,7 +5355,8 @@
                   magicuse == "slam" ||
                   magicuse == "mightyslam" ||
                   magicuse == "harpoonstrike" ||
-                  magicuse == "incinerate"
+                  magicuse == "incinerate" ||
+                  magicuse == "quickshots"
                 ) {
                   set_cursor(8)
                 } else {
