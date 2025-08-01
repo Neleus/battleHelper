@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.61
+// @version        0.62
 // @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
@@ -189,6 +189,9 @@
         }
         if (cast == "leap6") {
           stage[war_scr].showleap()
+        }
+        if (cast == "quickshots") {
+          // Устанавливаем курсор меча для quickshots при активации
         }
         carryo = -1
         magicpower = spell_powered[b]
@@ -5092,6 +5095,11 @@
                   attacky = yaa1
                   res = 210.5
                   if (magicuse == "harpoonstrike") {
+                    set_cursor(8)
+                    magicx = attackx
+                    magicy = attacky
+                  }
+                  if (magicuse == "quickshots") {
                     set_cursor(8)
                     magicx = attackx
                     magicy = attacky
