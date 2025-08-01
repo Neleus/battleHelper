@@ -190,9 +190,6 @@
         if (cast == "leap6") {
           stage[war_scr].showleap()
         }
-        if (cast == "quickshots") {
-          // Устанавливаем курсор меча для quickshots при активации
-        }
         carryo = -1
         magicpower = spell_powered[b]
 
