@@ -3,52 +3,46 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.62
-// @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog|inventory).php(?!.?setkamarmy)/
+// @version        0.63
+// @include        /^https{0,1}:\/\/(www|mirror|my)\.(heroeswm|lordswm)\.(ru|com)\/(war|warlog).php/
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
 // @license        GNU GPLv3
 // ==/UserScript==
 
 ;(function () {
-  if (
-    (location.pathname.indexOf("war.php") >= 0 ||
-      location.pathname.indexOf("warlog.php") >= 0) &&
-    location.href.indexOf("show_enemy") == -1
-  ) {
-    let lastMagic_button = document.createElement("div")
-    lastMagic_button.style.display = "none"
-    lastMagic_button.id = "lastMagic_button"
-    lastMagic_button.className = "toolbars_mobile_img"
-    lastMagic_button.innerHTML = "<img id='lastMagicSrc' src=''>"
-    document.querySelector("#magicbook_button_close").after(lastMagic_button)
+  let lastMagic_button = document.createElement("div")
+  lastMagic_button.style.display = "none"
+  lastMagic_button.id = "lastMagic_button"
+  lastMagic_button.className = "toolbars_mobile_img"
+  lastMagic_button.innerHTML = "<img id='lastMagicSrc' src=''>"
+  document.querySelector("#magicbook_button_close").after(lastMagic_button)
 
-    // Добавляем обработчик для чекбокса "Узкое поле"
-    setTimeout(() => {
-      const likeFlashCheckbox = document.getElementById("like_flash_checkbox")
-      if (likeFlashCheckbox) {
-        // Устанавливаем начальное состояние чекбокса из сохраненного значения
-        const savedValue = localStorage.getItem("like_flash")
-        likeFlashCheckbox.checked = savedValue === "true"
+  // Добавляем обработчик для чекбокса "Узкое поле"
+  setTimeout(() => {
+    const likeFlashCheckbox = document.getElementById("like_flash_checkbox")
+    if (likeFlashCheckbox) {
+      // Устанавливаем начальное состояние чекбокса из сохраненного значения
+      const savedValue = localStorage.getItem("like_flash")
+      likeFlashCheckbox.checked = savedValue === "true"
 
-        likeFlashCheckbox.addEventListener("change", function () {
-          unsafeWindow.like_flash = this.checked
-          localStorage.setItem("like_flash", this.checked)
-          hwm_set["like_flash"] = this.checked
-          if (typeof unsafeWindow.updateOrientation === "function") {
-            unsafeWindow.updateOrientation()
-          }
-        })
-      }
-    }, 100)
+      likeFlashCheckbox.addEventListener("change", function () {
+        unsafeWindow.like_flash = this.checked
+        localStorage.setItem("like_flash", this.checked)
+        hwm_set["like_flash"] = this.checked
+        if (typeof unsafeWindow.updateOrientation === "function") {
+          unsafeWindow.updateOrientation()
+        }
+      })
+    }
+  }, 100)
 
-    // Инициализируем like_flash перед вызовом updateOrientation()
-    const savedLikeFlash = localStorage.getItem("like_flash")
-    unsafeWindow.like_flash = savedLikeFlash === "true"
+  // Инициализируем like_flash перед вызовом updateOrientation()
+  const savedLikeFlash = localStorage.getItem("like_flash")
+  unsafeWindow.like_flash = savedLikeFlash === "true"
 
-    updateOrientation()
-    var timerIdn = setInterval(check, 100)
-  }
+  updateOrientation()
+  var timerIdn = setInterval(check, 100)
   function check() {
     if (document.getElementById("play_button").style.display == "none") {
       unsafeWindow.gpause = false
@@ -7329,74 +7323,6 @@
     }
   }
 
-  if (location.pathname.indexOf("inventory.php") >= 0) {
-    var inp = ""
-    var bt = ""
-    function inv_art_search_show() {
-      let info = document.getElementById("inv_art_amount")
-      for (let i = 0; i < info.children.length; i++) {
-        info.children[i].style.display = "none"
-      }
-      if (inp == "") {
-        inp = document.createElement("input")
-        inp.setAttribute("placeholder", "Поиск по названию")
-        inp.setAttribute("type", "text")
-        inp.setAttribute("id", "inp_search")
-        info.append(inp)
-        inp.addEventListener("input", search)
-        inp.style.display = "inline-block"
-        bt = document.createElement("button")
-        bt.innerHTML = "Скрыть поиск"
-        bt.setAttribute("id", "bt_search")
-        info.append(bt)
-        bt.addEventListener("click", hide_search)
-        bt.style.display = "inline-block"
-      } else {
-        bt.style.display = "inline-block"
-        inp.style.display = "inline-block"
-      }
-      start_hide_hwm_hint()
-    }
-    function hide_search() {
-      let info = document.getElementById("inv_art_amount")
-      for (let i = 0; i < info.children.length; i++) {
-        info.children[i].style.display =
-          info.children[i].tagName == "DIV" ? "inline-block" : "none"
-      }
-    }
-    function search() {
-      let s = document.getElementById("inp_search").value
-      let el = document.getElementById("inventory_block")
-      for (let i = 0; i < el.children.length; i++) {
-        let id = el.children[i].getAttribute("art_idx")
-        if (id == null) {
-          continue
-        }
-        el.children[i].style.display = arts[id].name
-          .toLowerCase()
-          .includes(s.toLowerCase())
-          ? "block"
-          : "none"
-      }
-    }
-    let sDiv = document.createElement("div")
-    let sImg = document.createElement("img")
-    sImg.setAttribute("src", "https://daily.lordswm.com/i/search_logo.png")
-    sImg.setAttribute("class", "inv_100mwmh")
-    sDiv.append(sImg)
-    sDiv.classList.add("divs_inline_right_24")
-    sDiv.classList.add("btn_hover")
-    sDiv.classList.add("show_hint")
-    sDiv.style.right = "28px"
-    document.getElementById("inv_art_amount").append(sDiv)
-    sDiv.setAttribute("hint", "Поиск по названию")
-    sDiv.setAttribute("hwm_hint_added", 1)
-    sDiv.addEventListener("mousemove", show_hwm_hint)
-    sDiv.addEventListener("touchstart", show_hwm_hint)
-    sDiv.addEventListener("mouseout", hide_hwm_hint)
-    sDiv.addEventListener("touchend", hide_hwm_hint)
-    sDiv.addEventListener("click", inv_art_search_show)
-  }
   if (
     location.pathname.indexOf("war.php") >= 0 ||
     location.pathname.indexOf("warlog.php") >= 0
