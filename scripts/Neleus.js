@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.64
+// @version        0.65
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
@@ -194,9 +194,38 @@
       }
 
       unsafeWindow.onkeydown = function (e) {
-        //добавляем хоткеи на shift C и F
         if (typeof keys === "undefined") return 0
 
+        // Хоткей Shift+A для переключения автобоя
+        if (
+          checkTrue("fastButtonHotkey") &&
+          event.shiftKey &&
+          event.code === "KeyA" &&
+          typeof buttons_visible !== "undefined"
+        ) {
+          const fastBattleOn = document.getElementById("fastbattle_on")
+          const fastBattleOff = document.getElementById("fastbattle_off")
+          
+          if (fastBattleOn && fastBattleOn.style.display !== "none") {
+            const mouseEvent = new MouseEvent("mouseup", {
+              bubbles: true,
+              cancelable: true
+            })
+            fastBattleOn.dispatchEvent(mouseEvent)
+            return 0
+          }
+          
+          if (fastBattleOff && fastBattleOff.style.display !== "none") {
+            const mouseEvent = new MouseEvent("mouseup", {
+              bubbles: true,
+              cancelable: true
+            })
+            fastBattleOff.dispatchEvent(mouseEvent)
+            return 0
+          }
+        }
+
+        // Добавляем хоткеи на shift C и F
         if (
           ((event.shiftKey && event.code === "KeyC") ||
             event.code === "KeyF") &&
@@ -981,6 +1010,8 @@
         atbStartDisplay: false,
         spellsOrder: false,
         like_flash: false,
+        moveFastButtons: false,
+        fastButtonHotkey: false,
       }
       for (let i in hwm_set) {
         const savedValue = localStorage.getItem(i)
@@ -1002,6 +1033,86 @@
         }
       }
       setAtbStyle()
+      
+      // Функция перемещения кнопок автобоя в правую панель
+      unsafeWindow.moveFastBattleButtons = function () {
+        const fastBattleOnElement = document.getElementById("fastbattle_on")
+        const fastBattleOffElement = document.getElementById("fastbattle_off")
+        const magicBookElement = document.getElementById("magicbook_button")
+        const rightPanel = document.getElementById("right_button")
+
+        if (magicBookElement && rightPanel) {
+          if (fastBattleOnElement) {
+            fastBattleOnElement.remove()
+            magicBookElement.insertAdjacentElement("afterend", fastBattleOnElement)
+          }
+
+          if (fastBattleOffElement) {
+            const insertAfter = fastBattleOnElement || magicBookElement
+            insertAfter.insertAdjacentElement("afterend", fastBattleOffElement)
+          }
+        }
+      }
+      
+      // Функция возврата кнопок автобоя в левую панель
+      unsafeWindow.returnFastBattleButtons = function () {
+        const fastBattleOnElement = document.getElementById("fastbattle_on")
+        const fastBattleOffElement = document.getElementById("fastbattle_off")
+        const leftPanel = document.getElementById("left_button")
+        const rightPanel = document.getElementById("right_button")
+
+        if (leftPanel) {
+          if (fastBattleOffElement && rightPanel && rightPanel.contains(fastBattleOffElement)) {
+            fastBattleOffElement.remove()
+            leftPanel.appendChild(fastBattleOffElement)
+          }
+          
+          if (fastBattleOnElement && rightPanel && rightPanel.contains(fastBattleOnElement)) {
+            fastBattleOnElement.remove()
+            leftPanel.appendChild(fastBattleOnElement)
+          }
+        }
+      }
+      
+      // Автоматическое перемещение кнопок при загрузке и отслеживание изменений DOM
+      if (checkTrue("moveFastButtons")) {
+        const waitForButtons = setInterval(() => {
+          const fastBattleOnElement = document.getElementById("fastbattle_on")
+          const fastBattleOffElement = document.getElementById("fastbattle_off")
+          const magicBookElement = document.getElementById("magicbook_button")
+
+          if ((fastBattleOnElement || fastBattleOffElement) && magicBookElement) {
+            clearInterval(waitForButtons)
+            moveFastBattleButtons()
+          }
+        }, 100)
+
+        setTimeout(() => clearInterval(waitForButtons), 10000)
+        
+        const observer = new MutationObserver(() => {
+          if (!checkTrue("moveFastButtons")) return
+          
+          const fastBattleOnElement = document.getElementById("fastbattle_on")
+          const fastBattleOffElement = document.getElementById("fastbattle_off")
+          const magicBookElement = document.getElementById("magicbook_button")
+          const leftPanel = document.getElementById("left_button")
+          
+          if ((fastBattleOnElement || fastBattleOffElement) && magicBookElement) {
+            const needsMove = (fastBattleOnElement && leftPanel && leftPanel.contains(fastBattleOnElement)) ||
+                             (fastBattleOffElement && leftPanel && leftPanel.contains(fastBattleOffElement))
+
+            if (needsMove) {
+              moveFastBattleButtons()
+            }
+          }
+        })
+
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        })
+      }
+      
       unsafeWindow.checkSet = function (name) {
         const checkbox = document.getElementById(name + "_checkbox")
         const newValue = checkbox.checked
@@ -1009,6 +1120,13 @@
         hwm_set[name] = newValue
         if (name == "atbStartDisplay") {
           setAtbStyle()
+        }
+        if (name == "moveFastButtons") {
+          if (newValue) {
+            moveFastBattleButtons()
+          } else {
+            returnFastBattleButtons()
+          }
         }
       }
       unsafeWindow.chatMode = function () {
@@ -1052,7 +1170,13 @@
       div.innerHTML =
         "<div class='info_row' id='atb-start-bonus'><label class='checkbox_container'>Стартовый бонус АТБ<input type='checkbox'" +
         (checkTrue("atbStartDisplay") ? " checked " : "") +
-        "id='atbStartDisplay_checkbox' onchange='checkSet(\"atbStartDisplay\")'><span class='checkbox_checkmark'></span></label></div><br>"
+        "id='atbStartDisplay_checkbox' onchange='checkSet(\"atbStartDisplay\")'><span class='checkbox_checkmark'></span></label></div><br>" +
+        "<div class='info_row' id='move-fast-buttons'><label class='checkbox_container'>Кнопка Автобоя справа<input type='checkbox'" +
+        (checkTrue("moveFastButtons") ? " checked " : "") +
+        "id='moveFastButtons_checkbox' onchange='checkSet(\"moveFastButtons\")'><span class='checkbox_checkmark'></span></label></div><br>" +
+        "<div class='info_row' id='fast-button-hotkey'><label class='checkbox_container'>Автобой на Shift+A<input type='checkbox'" +
+        (checkTrue("fastButtonHotkey") ? " checked " : "") +
+        "id='fastButtonHotkey_checkbox' onchange='checkSet(\"fastButtonHotkey\")'><span class='checkbox_checkmark'></span></label></div><br>"
       document
         .getElementById("win_Settings")
         .getElementsByTagName("form")[0]
