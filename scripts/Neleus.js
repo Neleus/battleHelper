@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.65
+// @version        0.66
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
@@ -198,7 +198,6 @@
 
         // Хоткей Shift+A для переключения автобоя
         if (
-          checkTrue("fastButtonHotkey") &&
           event.shiftKey &&
           event.code === "KeyA" &&
           typeof buttons_visible !== "undefined"
@@ -1011,7 +1010,6 @@
         spellsOrder: false,
         like_flash: false,
         moveFastButtons: false,
-        fastButtonHotkey: false,
       }
       for (let i in hwm_set) {
         const savedValue = localStorage.getItem(i)
@@ -1173,10 +1171,7 @@
         "id='atbStartDisplay_checkbox' onchange='checkSet(\"atbStartDisplay\")'><span class='checkbox_checkmark'></span></label></div><br>" +
         "<div class='info_row' id='move-fast-buttons'><label class='checkbox_container'>Кнопка Автобоя справа<input type='checkbox'" +
         (checkTrue("moveFastButtons") ? " checked " : "") +
-        "id='moveFastButtons_checkbox' onchange='checkSet(\"moveFastButtons\")'><span class='checkbox_checkmark'></span></label></div><br>" +
-        "<div class='info_row' id='fast-button-hotkey'><label class='checkbox_container'>Автобой на Shift+A<input type='checkbox'" +
-        (checkTrue("fastButtonHotkey") ? " checked " : "") +
-        "id='fastButtonHotkey_checkbox' onchange='checkSet(\"fastButtonHotkey\")'><span class='checkbox_checkmark'></span></label></div><br>"
+        "id='moveFastButtons_checkbox' onchange='checkSet(\"moveFastButtons\")'><span class='checkbox_checkmark'></span></label></div><br>"
       document
         .getElementById("win_Settings")
         .getElementsByTagName("form")[0]
