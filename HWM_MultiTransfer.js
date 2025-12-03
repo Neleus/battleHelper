@@ -12,6 +12,7 @@
 // @grant          GM_setValue
 // @grant          GM_deleteValue
 // @license        GNU GPLv3
+// ==/UserScript==
 
 ;(function () {
   "use strict"
@@ -425,7 +426,7 @@
     html +=
       '<br>Стоимость боя <input onkeypress="return /\\d/.test(event.key)" id="ppb" type="text" maxlength="4" size="4" placeholder="0">'
     html +=
-      "<br><br><button id=btn_save>Сохранить значение</button><br><br><button id=btn_remove>Убрать артефакт</button>"
+      "<br><br><button id=btn_save>Сохранить цену артефакта</button><br><br><button id=btn_remove>Убрать артефакт</button>"
     html += '</div><div class="mtrans-arts thin-scrollbar">'
 
     // Sort artifacts by index
