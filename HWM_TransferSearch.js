@@ -2,15 +2,19 @@
 // @name			TransferLog Search & Balance
 // @author			Neleus
 // @namespace		Neleus
-// @description	HWM TransferLog Search with balance calculation
-// @version			1.2
+// @description	HWM TransferLog Search with balance calculation and warlog search
+// @version			1.3
 // @include				/^https?:\/\/(www|mirror|my)?\.?(heroeswm|lordswm)\.(ru|com)\/pl_transfers\.php.*/
+// @include				/^https?:\/\/(www|mirror|my)?\.?(heroeswm|lordswm)\.(ru|com)\/pl_warlog\.php.*/
 // @grant			none
 // @run-at			document-end
 // @license			GNU GPLv3
 // ==/UserScript==
 
 (function () {
+  // Определяем тип страницы
+  const isWarlogPage = /pl_warlog\.php/.test(location.href);
+
   // Constants
   const SELECTORS = {
     CONTAINER_HEADER: "global_container_block_header global_a_hover",
@@ -61,9 +65,14 @@
 
   const rootElement = findRootElement();
 
-  applyInitialColoringAndBalance();
-  createSearchInterface(rootElement);
-  setupEventListeners(rootElement);
+  if (isWarlogPage) {
+    createWarlogSearchInterface(rootElement);
+    setupWarlogEventListeners(rootElement);
+  } else {
+    applyInitialColoringAndBalance();
+    createSearchInterface(rootElement);
+    setupEventListeners(rootElement);
+  }
 
   // Balance Processing Functions
   function makeColoredLine(line, gold, color) {
@@ -1051,5 +1060,326 @@
     if (xhr.overrideMimeType) {
       xhr.overrideMimeType("text/html; charset=windows-1251");
     }
+  }
+
+  // ==================== WARLOG SEARCH MODULE ====================
+
+  function createWarlogSearchInterface(rootElement) {
+    insertAfter(
+      rootElement.getElementsByTagName("center")[0].firstChild,
+      document.createElement("br")
+    );
+
+    const searchToggle = document.createElement("text");
+    searchToggle.id = ELEMENT_IDS.SEARCH_STATUS;
+    searchToggle.innerHTML = `&nbsp;(<a id="${ELEMENT_IDS.SHOW_BLOCK}" href="javascript: void(0);">Поиск по протоколу боёв</a>)`;
+    rootElement.getElementsByTagName("center")[0].appendChild(searchToggle);
+
+    const container = document.createElement("div");
+    container.id = ELEMENT_IDS.SEARCH_DIV;
+    container.style.display = "none";
+    container.innerHTML = `
+      <table>
+        <tr>
+          <td>Поиск по нику:</td>
+          <td><input type="text" id="${INPUT_IDS.NICK}" form="form_nick" /></td>
+          <td>
+            <form action="" style="padding:0;margin:0;border:0;" id="form_nick" onSubmit="return false;">
+              <input type="submit" id="WSearchByNick" value="Поиск" />
+            </form>
+          </td>
+        </tr>
+        <tr>
+          <td>с страницы</td>
+          <td><input type="text" id="${INPUT_IDS.PAGE_FROM}" value="1"/></td>
+          <td>&nbsp;</td>
+        </tr>
+        <tr>
+          <td>по страницу</td>
+          <td><input type="text" id="${INPUT_IDS.PAGE_TO}" value="0" placeholder="0 = до конца"/></td>
+          <td>
+            <button type="button" id="WSearch_get_total_pages">Узнать всего</button>
+          </td>
+        </tr>
+      </table>
+    `;
+    rootElement.getElementsByTagName("center")[0].appendChild(container);
+  }
+
+  function setupWarlogEventListeners(rootElement) {
+    addClickHandler(ELEMENT_IDS.SHOW_BLOCK, toggleSearchInterface);
+    addClickHandler("WSearchByNick", () =>
+      startWarlogSearch(playerId, rootElement)
+    );
+    addClickHandler("WSearch_get_total_pages", handleWarlogGetTotalPages);
+  }
+
+  function handleWarlogGetTotalPages() {
+    const button = $("WSearch_get_total_pages");
+    const pageToField = $(INPUT_IDS.PAGE_TO);
+    if (button.disabled) return;
+
+    button.textContent = "Загрузка...";
+    button.disabled = true;
+
+    getWarlogTotalPages(playerId, function (totalPages) {
+      pageToField.value = totalPages;
+      button.textContent = "Узнать всего";
+      button.disabled = false;
+    });
+  }
+
+  function getWarlogTotalPages(playerId, callback) {
+    fetch(`${url}pl_warlog.php?id=${playerId}&page=999999`)
+      .then((response) => response.text())
+      .then((html) => {
+        const div = document.createElement("div");
+        div.innerHTML = html;
+        const active = div.querySelector(".hwm_pagination a.active");
+        if (active) {
+          callback(parseInt(active.textContent));
+          return;
+        }
+        const links = div.querySelectorAll('.hwm_pagination a[href*="page="]');
+        let max = 1;
+        links.forEach((a) => {
+          const m = a.href.match(/page=(\d+)/);
+          if (m) max = Math.max(max, parseInt(m[1]) + 1);
+        });
+        callback(max);
+      })
+      .catch(() => callback(1));
+  }
+
+  function startWarlogSearch(playerId, rootElement) {
+    const searchString = $(INPUT_IDS.NICK).value.trim();
+    if (!searchString) {
+      alert("Введите ник для поиска");
+      return;
+    }
+
+    createStopButton();
+    const stopButton = $(ELEMENT_IDS.STOP);
+    if (stopButton) stopButton.value = "0";
+
+    const pageFrom = Math.max(1, getNumberFieldValue(INPUT_IDS.PAGE_FROM, 1));
+    let pageTo = getNumberFieldValue(INPUT_IDS.PAGE_TO, 0);
+
+    hideSearchInterface();
+
+    if (pageTo === 0) {
+      displayWarlogSearchStatus(searchString, "?", pageFrom);
+      $(ELEMENT_IDS.SEARCH_STATUS).innerHTML +=
+        "<br><i>Определяем общее количество страниц...</i>";
+
+      getWarlogTotalPages(playerId, function (totalPages) {
+        pageTo = totalPages;
+        executeWarlogSearch(
+          playerId,
+          rootElement,
+          searchString,
+          pageFrom,
+          pageTo
+        );
+      });
+    } else {
+      executeWarlogSearch(
+        playerId,
+        rootElement,
+        searchString,
+        pageFrom,
+        pageTo
+      );
+    }
+  }
+
+  function executeWarlogSearch(
+    playerId,
+    rootElement,
+    searchString,
+    pageFrom,
+    pageTo
+  ) {
+    const searchNick = searchString.toLowerCase();
+    const resultsElement = rootElement.getElementsByClassName(
+      SELECTORS.GLOBAL_HOVER
+    )[0];
+    resultsElement.innerHTML = "";
+
+    const titleContainer = document.createElement("div");
+    titleContainer.style.textAlign = "center";
+    titleContainer.innerHTML = `Поиск боёв с игроком <a href="pl_info.php?nick=${searchString}" style="text-decoration:none;"><b>${searchString}</b></a>`;
+    resultsElement.appendChild(titleContainer);
+    resultsElement.appendChild(document.createElement("br"));
+
+    displayWarlogSearchStatus(searchString, pageTo, pageFrom);
+
+    processWarlogPage(
+      pageFrom,
+      playerId,
+      searchNick,
+      pageTo,
+      resultsElement,
+      pageFrom
+    );
+  }
+
+  function processWarlogPage(
+    currentPage,
+    playerId,
+    searchNick,
+    lastPage,
+    resultsElement,
+    firstPage
+  ) {
+    const stopButton = $(ELEMENT_IDS.STOP);
+    if (stopButton && stopButton.value === "1") {
+      displayWarlogComplete(searchNick, firstPage, currentPage - 1);
+      return;
+    }
+    if (currentPage > lastPage) {
+      displayWarlogComplete(searchNick, firstPage, lastPage);
+      return;
+    }
+
+    // page=0 это первая страница, page=1 - вторая и т.д.
+    const pageNum = currentPage - 1;
+    const requestUrl = `${url}pl_warlog.php?id=${playerId}&page=${pageNum}`;
+
+    // Используем тот же подход что и для передач - XMLHttpRequest + hiddenDiv
+    const xhr = createXMLHttpRequest();
+    xhr.open("GET", requestUrl, true);
+    setRequestHeaders(xhr);
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        hiddenDiv.innerHTML = xhr.responseText;
+
+        const warlogContainer = hiddenDiv.getElementsByClassName(
+          SELECTORS.CONTAINER_HEADER
+        )[0];
+        if (!warlogContainer) {
+          updateWarlogProgress(lastPage, firstPage);
+          processWarlogPage(
+            currentPage + 1,
+            playerId,
+            searchNick,
+            lastPage,
+            resultsElement,
+            firstPage
+          );
+          return;
+        }
+
+        const contentDiv =
+          warlogContainer.nextElementSibling.getElementsByClassName(
+            SELECTORS.GLOBAL_HOVER
+          )[0];
+        if (!contentDiv) {
+          updateWarlogProgress(lastPage, firstPage);
+          processWarlogPage(
+            currentPage + 1,
+            playerId,
+            searchNick,
+            lastPage,
+            resultsElement,
+            firstPage
+          );
+          return;
+        }
+
+        // Разбиваем содержимое на строки по <BR>
+        const lines = contentDiv.innerHTML.split(/<br>/gi);
+        for (const line of lines) {
+          if (
+            line.includes("warlog.php?warid=") &&
+            hasNickInLine(line, searchNick)
+          ) {
+            const matchesEl = $("matches");
+            if (matchesEl)
+              matchesEl.innerHTML = Number(matchesEl.innerHTML) + 1;
+
+            const div = document.createElement("div");
+            div.style.background = "rgba(255,255,0,.3)";
+            div.style.padding = "3px";
+            div.style.margin = "2px 0";
+            div.innerHTML = line;
+            resultsElement.appendChild(div);
+          }
+        }
+
+        updateWarlogProgress(lastPage, firstPage);
+        processWarlogPage(
+          currentPage + 1,
+          playerId,
+          searchNick,
+          lastPage,
+          resultsElement,
+          firstPage
+        );
+      }
+    };
+    xhr.send(null);
+  }
+
+  function hasNickInLine(line, searchNick) {
+    // Ники могут быть обёрнуты в <b>, <font> и другие теги
+    // Пример: <a class=pi href="pl_info.php?id=123"><font color=red>Ник[21]</font></a>
+    const regex = /pl_info\.php\?id=\d+[^>]*>([^<]*(?:<[^>]+>[^<]*)*)/gi;
+    let match;
+    while ((match = regex.exec(line)) !== null) {
+      // Убираем все HTML теги и извлекаем чистый ник
+      const nickWithTags = match[1];
+      const cleanNick = nickWithTags
+        .replace(/<[^>]*>/g, "")
+        .replace(/\[\d+\]$/, "")
+        .trim();
+      if (cleanNick.toLowerCase().includes(searchNick)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function displayWarlogSearchStatus(searchString, totalPages, firstPage) {
+    const oldStatus = $(ELEMENT_IDS.SEARCH_STATUS);
+    if (oldStatus) oldStatus.remove();
+
+    const statusContainer = document.createElement("div");
+    statusContainer.id = ELEMENT_IDS.SEARCH_STATUS;
+    statusContainer.style.textAlign = "center";
+    statusContainer.innerHTML = `
+      Идёт поиск по нику <a href="pl_info.php?nick=${searchString}" style="text-decoration:none;"><b>${searchString}</b></a>...
+      (<a href="javascript:void(0);" onclick="stopSearch();">стоп</a>)
+      <br/>
+      Просмотрено <text id="viewed">0</text> страничек из ${
+        totalPages - firstPage + 1
+      }
+      (с ${firstPage} по ${totalPages}): <text id="percent">0</text>%
+      <br/>
+      Найдено <text id="matches">0</text> боёв
+    `;
+    rootElement.appendChild(statusContainer);
+    rootElement.appendChild(document.createElement("br"));
+  }
+
+  function updateWarlogProgress(totalPages, firstPage) {
+    const viewedEl = $("viewed");
+    const percentEl = $("percent");
+    if (viewedEl && percentEl) {
+      viewedEl.innerHTML = Number(viewedEl.innerHTML) + 1;
+      percentEl.innerHTML = Math.round(
+        (viewedEl.innerHTML * 100) / (totalPages - firstPage + 1)
+      );
+    }
+  }
+
+  function displayWarlogComplete(searchNick, firstPage, lastPage) {
+    const matches = $("matches")?.innerHTML || "0";
+    $(ELEMENT_IDS.SEARCH_STATUS).innerHTML = `
+      Поиск по нику "<b>${searchNick}</b>" закончен!<br>
+      Найдено <b style="color:${
+        matches !== "0" ? "green" : "red"
+      }">${matches}</b> боёв на страницах ${firstPage}-${lastPage}
+    `;
   }
 })();
