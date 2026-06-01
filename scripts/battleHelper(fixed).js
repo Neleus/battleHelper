@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.70
+// @version        0.69
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
