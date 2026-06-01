@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.69
+// @version        0.70
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
@@ -15,19 +15,50 @@
 // ==/UserScript==
 
 ;(function () {
+  // Страница игры может догружаться дольше, чем стартует script.
+  function whenReady(probe, onReady, interval, timeout) {
+    interval = interval || 100
+    timeout = timeout || 30000
+    const startedAt = Date.now()
+    const id = setInterval(function () {
+      let value
+      try {
+        value = probe()
+      } catch (e) {
+        value = null
+      }
+      if (value) {
+        clearInterval(id)
+        onReady(value)
+      } else if (Date.now() - startedAt > timeout) {
+        clearInterval(id)
+      }
+    }, interval)
+  }
+
   let lastMagic_button = document.createElement("div")
   lastMagic_button.style.display = "none"
   lastMagic_button.id = "lastMagic_button"
   lastMagic_button.className = "toolbars_mobile_img"
   lastMagic_button.innerHTML = "<img id='lastMagicSrc' src=''>"
-  const magicbookBtnClose = document.querySelector("#magicbook_button_close")
-  magicbookBtnClose.after(lastMagic_button)
-  lastMagic_button.style.width = magicbookBtnClose.style.width
+  // Ждём появления кнопки закрытия книги магии
+  whenReady(
+    function () {
+      return document.querySelector("#magicbook_button_close")
+    },
+    function (magicbookBtnClose) {
+      if (document.getElementById("lastMagic_button")) return
+      magicbookBtnClose.after(lastMagic_button)
+      lastMagic_button.style.width = magicbookBtnClose.style.width
+    }
+  )
 
   // Добавляем обработчик для чекбокса "Узкое поле"
-  setTimeout(() => {
-    const likeFlashCheckbox = document.getElementById("like_flash_checkbox")
-    if (likeFlashCheckbox) {
+  whenReady(
+    function () {
+      return document.getElementById("like_flash_checkbox")
+    },
+    function (likeFlashCheckbox) {
       // Устанавливаем начальное состояние чекбокса из сохраненного значения
       const savedValue = localStorage.getItem("like_flash")
       likeFlashCheckbox.checked = savedValue === "true"
@@ -41,16 +72,25 @@
         }
       })
     }
-  }, 100)
+  )
 
   // Инициализируем like_flash перед вызовом updateOrientation()
   const savedLikeFlash = localStorage.getItem("like_flash")
   unsafeWindow.like_flash = savedLikeFlash === "true"
 
-  updateOrientation()
+  // updateOrientation — функция игры; ждём, пока она станет доступна.
+  whenReady(
+    function () {
+      return typeof unsafeWindow.updateOrientation === "function"
+    },
+    function () {
+      updateOrientation()
+    }
+  )
   var timerIdn = setInterval(check, 100)
   function check() {
-    if (document.getElementById("play_button").style.display == "none") {
+    const playBtn = document.getElementById("play_button")
+    if (playBtn && playBtn.style.display == "none") {
       unsafeWindow.gpause = false
     }
     if (
