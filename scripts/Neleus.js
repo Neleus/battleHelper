@@ -3,11 +3,12 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.67
+// @version        0.69
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
 // @include        https://my.lordswm.com/war.php*
+// @include        https://www.lordswm.com/war.php*
 // @grant          GM_xmlhttpRequest
 // @grant          unsafeWindow
 // @license        GNU GPLv3
@@ -206,20 +207,20 @@
         ) {
           const fastBattleOn = document.getElementById("fastbattle_on")
           const fastBattleOff = document.getElementById("fastbattle_off")
-          
+
           if (fastBattleOn && fastBattleOn.style.display !== "none") {
             const mouseEvent = new MouseEvent("mouseup", {
               bubbles: true,
-              cancelable: true
+              cancelable: true,
             })
             fastBattleOn.dispatchEvent(mouseEvent)
             return 0
           }
-          
+
           if (fastBattleOff && fastBattleOff.style.display !== "none") {
             const mouseEvent = new MouseEvent("mouseup", {
               bubbles: true,
-              cancelable: true
+              cancelable: true,
             })
             fastBattleOff.dispatchEvent(mouseEvent)
             return 0
@@ -333,9 +334,8 @@
             stage[war_scr].obj[activeobj].lastMagicUse
           )
         ) {
-          document.getElementById(
-            "lastMagicSrc"
-          ).src = `${window.location.origin}/i/combat/magicbook/${stage[war_scr].obj[activeobj].lastMagicUse}.png`
+          document.getElementById("lastMagicSrc").src =
+            `${window.location.origin}/i/combat/magicbook/${stage[war_scr].obj[activeobj].lastMagicUse}.png`
           show_button("lastMagic_button")
           spell_id[0] = stage[war_scr].obj[activeobj].lastMagicUse
           spell_powered[0] = stage[war_scr].obj[activeobj].lastMagicUse_powered
@@ -567,13 +567,13 @@
           }
           kz = 1
           var kz2 = 1
-          if (isperk(activeobj, 110) && stage[war_scr].obj[activeobj].hero) {
+          if (battle_is_it_perk(activeobj, 110) && stage[war_scr].obj[activeobj].hero) {
             kz *= 0.8
           }
-          if (isperk(activeobj, 87) && !stage[war_scr].obj[activeobj].hero) {
+          if (battle_is_it_perk(activeobj, 87) && !stage[war_scr].obj[activeobj].hero) {
             kz = 0.5
           }
-          if (isperk(activeobj, 111) && stage[war_scr].obj[activeobj].hero) {
+          if (battle_is_it_perk(activeobj, 111) && stage[war_scr].obj[activeobj].hero) {
             kz *= 0.8
           }
           if (magic[activeobj]["dnn"]) {
@@ -681,15 +681,15 @@
             if (stage[war_scr].obj[activeobj].hero) {
               var s1 = 0
               if (
-                isperk(activeobj, 93) &&
+                battle_is_it_perk(activeobj, 93) &&
                 (s == "magicfist" || s == "raisedead")
               ) {
                 s1 = 4
               }
-              if (isperk(activeobj, 78) && (s == "poison" || s == "mpoison")) {
+              if (battle_is_it_perk(activeobj, 78) && (s == "poison" || s == "mpoison")) {
                 s1 += 5
               }
-              if (isperk(activeobj, 89) && (s == "poison" || s == "mpoison")) {
+              if (battle_is_it_perk(activeobj, 89) && (s == "poison" || s == "mpoison")) {
                 s1 += 3
               }
               eff =
@@ -754,10 +754,10 @@
           if (stage[war_scr].obj[activeobj][s + "time"] > 0) {
             if (stage[war_scr].obj[activeobj].hero || magic[activeobj]["her"]) {
               eff = stage[war_scr].getspellpower(activeobj, s)
-              if (isperk(activeobj, 89)) {
+              if (battle_is_it_perk(activeobj, 89)) {
                 eff += 3
               }
-              if (isperk(activeobj, 78) && checkdark(s)) {
+              if (battle_is_it_perk(activeobj, 78) && checkdark(s)) {
                 eff += 5
               }
             } else {
@@ -1033,7 +1033,7 @@
         }
       }
       setAtbStyle()
-      
+
       // Функция перемещения кнопок автобоя в правую панель
       unsafeWindow.moveFastBattleButtons = function () {
         const fastBattleOnElement = document.getElementById("fastbattle_on")
@@ -1044,7 +1044,10 @@
         if (magicBookElement && rightPanel) {
           if (fastBattleOnElement) {
             fastBattleOnElement.remove()
-            magicBookElement.insertAdjacentElement("afterend", fastBattleOnElement)
+            magicBookElement.insertAdjacentElement(
+              "afterend",
+              fastBattleOnElement
+            )
           }
 
           if (fastBattleOffElement) {
@@ -1053,7 +1056,7 @@
           }
         }
       }
-      
+
       // Функция возврата кнопок автобоя в левую панель
       unsafeWindow.returnFastBattleButtons = function () {
         const fastBattleOnElement = document.getElementById("fastbattle_on")
@@ -1062,18 +1065,26 @@
         const rightPanel = document.getElementById("right_button")
 
         if (leftPanel) {
-          if (fastBattleOffElement && rightPanel && rightPanel.contains(fastBattleOffElement)) {
+          if (
+            fastBattleOffElement &&
+            rightPanel &&
+            rightPanel.contains(fastBattleOffElement)
+          ) {
             fastBattleOffElement.remove()
             leftPanel.appendChild(fastBattleOffElement)
           }
-          
-          if (fastBattleOnElement && rightPanel && rightPanel.contains(fastBattleOnElement)) {
+
+          if (
+            fastBattleOnElement &&
+            rightPanel &&
+            rightPanel.contains(fastBattleOnElement)
+          ) {
             fastBattleOnElement.remove()
             leftPanel.appendChild(fastBattleOnElement)
           }
         }
       }
-      
+
       // Автоматическое перемещение кнопок при загрузке и отслеживание изменений DOM
       if (checkTrue("moveFastButtons")) {
         const waitForButtons = setInterval(() => {
@@ -1081,25 +1092,36 @@
           const fastBattleOffElement = document.getElementById("fastbattle_off")
           const magicBookElement = document.getElementById("magicbook_button")
 
-          if ((fastBattleOnElement || fastBattleOffElement) && magicBookElement) {
+          if (
+            (fastBattleOnElement || fastBattleOffElement) &&
+            magicBookElement
+          ) {
             clearInterval(waitForButtons)
             moveFastBattleButtons()
           }
         }, 100)
 
         setTimeout(() => clearInterval(waitForButtons), 10000)
-        
+
         const observer = new MutationObserver(() => {
           if (!checkTrue("moveFastButtons")) return
-          
+
           const fastBattleOnElement = document.getElementById("fastbattle_on")
           const fastBattleOffElement = document.getElementById("fastbattle_off")
           const magicBookElement = document.getElementById("magicbook_button")
           const leftPanel = document.getElementById("left_button")
-          
-          if ((fastBattleOnElement || fastBattleOffElement) && magicBookElement) {
-            const needsMove = (fastBattleOnElement && leftPanel && leftPanel.contains(fastBattleOnElement)) ||
-                             (fastBattleOffElement && leftPanel && leftPanel.contains(fastBattleOffElement))
+
+          if (
+            (fastBattleOnElement || fastBattleOffElement) &&
+            magicBookElement
+          ) {
+            const needsMove =
+              (fastBattleOnElement &&
+                leftPanel &&
+                leftPanel.contains(fastBattleOnElement)) ||
+              (fastBattleOffElement &&
+                leftPanel &&
+                leftPanel.contains(fastBattleOffElement))
 
             if (needsMove) {
               moveFastBattleButtons()
@@ -1109,10 +1131,10 @@
 
         observer.observe(document.body, {
           childList: true,
-          subtree: true
+          subtree: true,
         })
       }
-      
+
       unsafeWindow.checkSet = function (name) {
         const checkbox = document.getElementById(name + "_checkbox")
         const newValue = checkbox.checked
@@ -1292,9 +1314,8 @@
           document.getElementById("hp" + i + "t").innerHTML = `${nHP[i - 1]}/${
             sHP[i - 1]
           } (${percentage.toFixed(2)}%)`
-          document.getElementById(
-            "hp" + i + "c"
-          ).style.width = `${percentage.toFixed(2)}%`
+          document.getElementById("hp" + i + "c").style.width =
+            `${percentage.toFixed(2)}%`
         }
       }
       unsafeWindow.infoBlock = function (i = 0) {
@@ -1826,7 +1847,7 @@
           let soldiersLuck = 0
           if (heroes[this.obj[activeobj]["owner"]] > 0) {
             let h = heroes[this.obj[activeobj]["owner"]]
-            if (isperk(activeobj, 33)) {
+            if (battle_is_it_perk(activeobj, 33)) {
               soldiersLuck = 1
             }
           }
@@ -2203,7 +2224,7 @@
           if (
             magicuse != "" &&
             this.obj[activeobj][magicuse + "elem"] == "air" &&
-            ((this.obj[activeobj]["hero"] && isperk(activeobj, 100)) ||
+            ((this.obj[activeobj]["hero"] && battle_is_it_perk(activeobj, 100)) ||
               this.obj[activeobj]["master_of_storms"])
           ) {
             this.reset_temp_magic()
@@ -2212,7 +2233,7 @@
           if (
             magicuse != "" &&
             (magicuse == "circle_of_winter" || magicuse == "icebolt") &&
-            ((this.obj[activeobj]["hero"] && isperk(activeobj, 99)) ||
+            ((this.obj[activeobj]["hero"] && battle_is_it_perk(activeobj, 99)) ||
               this.obj[activeobj]["master_of_ice"])
           ) {
             this.reset_temp_magic()
@@ -2393,7 +2414,7 @@
                 t21 = 0
                 k = playero
                 k1 = playero1
-                if (isperk(0, 12, k)) {
+                if (battle_is_it_perk(0, 12, k)) {
                   if (k % 2 == 0) {
                     t1 = -1
                   } else {
@@ -2437,7 +2458,7 @@
                   t1 = 0
                   t2 = 0
                   k = playero
-                  if (isperk(0, 12, k)) {
+                  if (battle_is_it_perk(0, 12, k)) {
                     if ((k + camp_mirror) % 2 == 0) {
                       t1 = -1
                     } else {
@@ -4111,7 +4132,7 @@
                   (10 *
                     (this.obj[activeobj][s + "effmain"] +
                       (this.getspellpower(activeobj, s) +
-                        isperk(activeobj, 89) * 3) *
+                        battle_is_it_perk(activeobj, 89) * 3) *
                         this.obj[activeobj][s + "effmult"])) /
                     ((this.obj[carryo].nownumber - 1) *
                       this.obj[carryo].maxhealth +
@@ -4529,10 +4550,10 @@
               var s = "frenzy"
               var addeff = 0
               if (this.obj[activeobj].hero) {
-                if (isperk(activeobj, 78)) {
+                if (battle_is_it_perk(activeobj, 78)) {
                   addeff += 5
                 }
-                if (isperk(activeobj, 89)) {
+                if (battle_is_it_perk(activeobj, 89)) {
                   addeff += 3
                 }
               }
@@ -5042,40 +5063,40 @@
           magicuse != "resurrection"
         ) {
           var plus = 100
-          if (isperk(activeobj, 105)) plus = 90
-          if (isperk(activeobj, 106)) plus = 80
-          if (isperk(activeobj, 107)) plus = 70
+          if (battle_is_it_perk(activeobj, 105)) plus = 90
+          if (battle_is_it_perk(activeobj, 106)) plus = 80
+          if (battle_is_it_perk(activeobj, 107)) plus = 70
           if (
-            isperk(activeobj, 85) &&
+            battle_is_it_perk(activeobj, 85) &&
             (magicuse == "mbless" || magicuse == "mdispel")
           ) {
             plus = 50
           }
           if (
-            isperk(activeobj, 84) &&
+            battle_is_it_perk(activeobj, 84) &&
             (magicuse == "mstoneskin" || magicuse == "mdeflect_missile")
           ) {
             plus = 50
           }
           if (
-            isperk(activeobj, 86) &&
+            battle_is_it_perk(activeobj, 86) &&
             (magicuse == "mfast" || magicuse == "mrighteous_might")
           ) {
             plus = 50
           }
           if (
-            isperk(activeobj, 75) &&
+            battle_is_it_perk(activeobj, 75) &&
             (magicuse == "mcurse" || magicuse == "msuffering")
           ) {
             plus = 50
           }
           if (
-            isperk(activeobj, 76) &&
+            battle_is_it_perk(activeobj, 76) &&
             (magicuse == "mslow" || magicuse == "mconfusion")
           ) {
             plus = 50
           }
-          if (isperk(activeobj, 77) && magicuse == "mdray") {
+          if (battle_is_it_perk(activeobj, 77) && magicuse == "mdray") {
             plus = 50
           }
           if (
@@ -5722,7 +5743,7 @@
                 document.getElementById("mission_header").innerHTML =
                   "Пробный бой"
                 texts[2] =
-                  "Вы находитесь в новой игре Герои Войны и Денег. Это тактическая стратегия с элементами RPG и экономики. Здесь вы сможете реализовать все свои способности, постоянно развиваясь и улучшая свои навыки. � егулярные обновления сохранят ваш интерес к игре надолго.\n\nПобеди в бою и начинай играть!"
+                  "Вы находитесь в новой игре Герои Войны и Денег. Это тактическая стратегия с элементами RPG и экономики. Здесь вы сможете реализовать все свои способности, постоянно развиваясь и улучшая свои навыки. Регулярные обновления сохранят ваш интерес к игре надолго.\n\nПобеди в бою и начинай играть!"
               }
               if (demomode && lang == 1) {
                 document.getElementById("mission_header").innerHTML =
@@ -5937,14 +5958,14 @@
         var k = 0,
           bit = 0
         mcount = -1
-        ;(mname = []),
+        ;((mname = []),
           (minit = []),
           (meffect = []),
           (mcast = []),
           (mdo = []),
           (mtype = []),
           (mperc = []),
-          (out = "")
+          (out = ""))
         var showeff = 1
         mcount = -1
         var tmp = i
@@ -6356,7 +6377,7 @@
           ok &&
           magicuse != "" &&
           (magicuse == "circle_of_winter" || magicuse == "icebolt") &&
-          ((this.obj[activeobj]["hero"] && isperk(activeobj, 99)) ||
+          ((this.obj[activeobj]["hero"] && battle_is_it_perk(activeobj, 99)) ||
             this.obj[activeobj]["master_of_ice"])
         ) {
           this.showatb()
@@ -6365,7 +6386,7 @@
           ok &&
           magicuse != "" &&
           this.obj[activeobj][magicuse + "elem"] == "air" &&
-          ((this.obj[activeobj]["hero"] && isperk(activeobj, 100)) ||
+          ((this.obj[activeobj]["hero"] && battle_is_it_perk(activeobj, 100)) ||
             this.obj[activeobj]["master_of_storms"])
         ) {
           this.showatb()
