@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Мультипередача артефактов
-// @version        1.1
+// @version        1.2
 // @match          https://www.heroeswm.ru/inventory.php*
 // @match          https://mirror.heroeswm.ru/inventory.php*
 // @match          https://lordswm.com/inventory.php*
@@ -139,42 +139,74 @@
   const saveTranslist = (list) => setStorage(STORAGE_KEY, list)
 
   // ==================== ARTS EXTRACTION ====================
+  // С версии движка инвентаря 50.x данные больше не лежат в глобальной
+  // переменной `arts` (она спрятана в замыкании модуля HWM.Inventory).
+  // Они приходят в вызове HWM.Inventory.bootstrap({...}) и декодируются
+  // по карте имён art_fields — читаем их прямо из inline-скрипта.
   let INV_ARTS_OBJ = {}
+  let SIGN = ""
 
-  const getArtsFromPage = (attempt = 1) => {
-    return new Promise((resolve) => {
-      const script = document.createElement("script")
-      script.textContent = `
-        if (typeof arts !== 'undefined') {
-          const obj = {};
-          arts.forEach((s, t) => obj[t] = Object.values(s));
-          window.postMessage({ type: 'HWM_ARTS', data: obj }, '*');
-        }
-      `
-      document.body.appendChild(script)
-      script.remove()
+  // Вырезает сбалансированный {...} начиная с позиции start, корректно
+  // пропуская фигурные скобки внутри строковых литералов JSON.
+  const sliceBalanced = (str, start) => {
+    if (start < 0) return null
+    let depth = 0, inStr = false, esc = false
+    for (let i = start; i < str.length; i++) {
+      const c = str[i]
+      if (inStr) {
+        if (esc) esc = false
+        else if (c === "\\") esc = true
+        else if (c === '"') inStr = false
+      } else if (c === '"') inStr = true
+      else if (c === "{") depth++
+      else if (c === "}" && --depth === 0) return str.slice(start, i + 1)
+    }
+    return null
+  }
 
-      let resolved = false
-      const handler = (e) => {
-        if (resolved) return
-        if (e.data?.type === "HWM_ARTS") {
-          resolved = true
-          window.removeEventListener("message", handler)
-          resolve(e.data.data)
+  // Повторяет логику inv_decode_art_rows из inventory.js: позиционные поля
+  // row[j] -> fields[j], затем «разреженный» хвост {"_":1,"<idx>":value,...}.
+  const decodeArtRows = (rows, fields) => {
+    if (!rows) return []
+    if (!fields || !fields.length) return rows
+    return rows.map((row) => {
+      if (!Array.isArray(row)) return row
+      const art = {}
+      let len = row.length
+      const tail = len ? row[len - 1] : null
+      let sparse = null
+      if (tail && typeof tail === "object" && !Array.isArray(tail) && tail["_"]) {
+        sparse = tail
+        len--
+      }
+      for (let j = 0; j < len && j < fields.length; j++) art[fields[j]] = row[j]
+      if (sparse) {
+        for (const key in sparse) {
+          if (key === "_") continue
+          const fi = parseInt(key, 10)
+          if (fi >= 0 && fi < fields.length) art[fields[fi]] = sparse[key]
         }
       }
-      window.addEventListener("message", handler)
-
-      setTimeout(() => {
-        if (resolved) return
-        window.removeEventListener("message", handler)
-        if (attempt < 3) {
-          setTimeout(() => resolve(getArtsFromPage(attempt + 1)), 500)
-        } else {
-          resolve({})
-        }
-      }, 2000)
+      return art
     })
+  }
+
+  const extractInventory = () => {
+    let raw = ""
+    for (const s of document.scripts) {
+      if (s.textContent.includes("HWM.Inventory.bootstrap(")) { raw = s.textContent; break }
+    }
+    if (!raw) raw = DATA
+    const m = /HWM\.Inventory\.bootstrap\(/.exec(raw)
+    if (!m) return { arts: {}, sign: "" }
+    const json = sliceBalanced(raw, raw.indexOf("{", m.index + m[0].length))
+    if (!json) return { arts: {}, sign: "" }
+    let data
+    try { data = JSON.parse(json) } catch { return { arts: {}, sign: "" } }
+    const decoded = decodeArtRows(data.arts || [], data.art_fields || [])
+    const obj = {}
+    decoded.forEach((art, idx) => { obj[idx] = art })
+    return { arts: obj, sign: data.sign || "" }
   }
 
   // ==================== HELPER FUNCTIONS ====================
@@ -184,7 +216,7 @@
     return matches.map(m => `<option value="${m[1]}">${m[1]}</option>`).join("")
   }
 
-  const getIndex = (artId) => Object.keys(INV_ARTS_OBJ).find(t => INV_ARTS_OBJ[t][0] == artId) || -1
+  const getIndex = (artId) => Object.keys(INV_ARTS_OBJ).find(t => INV_ARTS_OBJ[t].id == artId) || -1
 
   const parseSuffix = (mods) => {
     return [...mods.matchAll(/\w\d+/g)].map(m => `<img src="${IMG_LINK}mods_png/24/${m[0]}.png">`).join("")
@@ -287,7 +319,7 @@
     progressBar.style.display = "block"
     errorDiv.innerHTML = "<br>"
 
-    const sign = /sign='(\w+)/.exec(DATA)[1]
+    const sign = SIGN
     const step = 100 / poolData.selected.length
 
     for (let artId of poolData.selected) {
@@ -326,17 +358,16 @@
     const sortedIds = Object.keys(translist).sort((a, b) => getIndex(a) - getIndex(b))
     for (let artId of sortedIds) {
       const idx = getIndex(artId)
-      if (idx === -1 || !INV_ARTS_OBJ[idx] || INV_ARTS_OBJ[idx][12] !== 0 || INV_ARTS_OBJ[idx][20] === 1) continue
+      if (idx === -1 || !INV_ARTS_OBJ[idx] || INV_ARTS_OBJ[idx].dressed || INV_ARTS_OBJ[idx].star_grouped === 1) continue
 
       const art = INV_ARTS_OBJ[idx]
-      const imgMatch = /artifacts\/((?:\w+\/)*[\w-]+)/.exec(art[7])
-      poolData.arts[artId] = { name: art[3] + art[8], ppb: translist[artId], dur1: art[5], dur2: art[6] }
+      poolData.arts[artId] = { name: art.name + (art.suffix || ""), ppb: translist[artId], dur1: art.durability1, dur2: art.durability2 }
 
       html += `<div class="inventory_item_div mtrans-item" data-id="${artId}" art_idx="${idx}">`
-      html += `<div class="mtrans-dur">${art[5]}/${art[6]}</div><input type="checkbox" class="mtrans-chk">`
+      html += `<div class="mtrans-dur">${art.durability1}/${art.durability2}</div><input type="checkbox" class="mtrans-chk">`
       html += `<img src="${IMG_LINK}art_fon_100x100.png" height="100%">`
-      html += `<img src="${IMG_LINK}artifacts/${imgMatch?.[1] || ""}.png" height="100%" class="cre_mon_image2">`
-      html += `<div class="art_mods no-events">${parseSuffix(art[8])}</div></div>`
+      html += `<img src="${IMG_LINK}artifacts/${art.art_id}.png" height="100%" class="cre_mon_image2">`
+      html += `<div class="art_mods no-events">${parseSuffix(art.suffix || "")}</div></div>`
     }
 
     html += '</div><div class="mtrans-footer">'
@@ -479,13 +510,16 @@
     btn.innerHTML = `<img class="inv_item_select_img show_hint" hint="В мультипередачу" src="${IMG_LINK}inv_im/btn_art_transfer.png">`
     buttonsContainer.insertBefore(btn, buttonsContainer.lastElementChild)
 
-    btn.onclick = (e) => {
+    // Новое меню инвентаря закрывается по mouseup на document.body
+    // (body_mouse_up). Поэтому вешаем обработчик на mouseup и гасим
+    // всплытие, как это делают штатные кнопки меню (inv_menu_button).
+    btn.onmouseup = (e) => {
       e.stopPropagation()
       const artIdx = invMenu.getAttribute("art_idx")
       if (!artIdx || !INV_ARTS_OBJ[artIdx]) return
 
-      const artId = INV_ARTS_OBJ[artIdx][0]
-      if (INV_ARTS_OBJ[artIdx][23] === 0) return alert("Этот артефакт нельзя передать")
+      const artId = INV_ARTS_OBJ[artIdx].id
+      if (!INV_ARTS_OBJ[artIdx].transfer_ok) return alert("Этот артефакт нельзя передать")
 
       const translist = getTranslist()
       if (artId in translist) return alert("Уже в списке мультипередачи")
@@ -495,7 +529,7 @@
       setMTransferBadges(translist, container)
 
       const s = document.createElement("script")
-      s.textContent = "if(typeof inv_menu_hide==='function')inv_menu_hide();"
+      s.textContent = "if(window.HWM&&HWM.Inventory&&HWM.Inventory.menu&&HWM.Inventory.menu.hide){HWM.Inventory.menu.hide()}else if(typeof inv_menu_hide==='function'){inv_menu_hide()}"
       document.body.appendChild(s)
       s.remove()
     }
@@ -506,8 +540,8 @@
         btn.style.display = "none"
         return
       }
-      const artId = INV_ARTS_OBJ[artIdx][0]
-      const canTransfer = INV_ARTS_OBJ[artIdx][23] !== 0
+      const artId = INV_ARTS_OBJ[artIdx].id
+      const canTransfer = !!INV_ARTS_OBJ[artIdx].transfer_ok
       btn.style.display = (canTransfer && !(artId in getTranslist())) ? "block" : "none"
     }
 
@@ -527,7 +561,10 @@
     let translist = getTranslist()
     setMTransferBadges(translist, container)
 
-    const friendsOptions = await getFriendsList()
+    // Список друзей грузим в фоне: если friends.php не ответит, обработчики
+    // вкладки и перетаскивания всё равно должны навеситься.
+    let friendsOptions = ""
+    getFriendsList().then(opts => { friendsOptions = opts }).catch(() => {})
 
     mtransBtn.onclick = () => {
       const active = $(".filter_tab_active")
@@ -546,14 +583,14 @@
       let target = e.target
       while (target && !(draggedIndex = target.getAttribute("art_idx"))) target = target.parentNode
       if (!draggedIndex || !INV_ARTS_OBJ[draggedIndex]) return
-      draggedArtId = INV_ARTS_OBJ[draggedIndex][0]
-      if (INV_ARTS_OBJ[draggedIndex][23] !== 0 && !(draggedArtId in translist)) {
+      draggedArtId = INV_ARTS_OBJ[draggedIndex].id
+      if (INV_ARTS_OBJ[draggedIndex].transfer_ok && !(draggedArtId in translist)) {
         mtransBtn.classList.add("mtrans-btn-anim")
       }
     }
 
     mtransBtn.ondragover = (e) => {
-      if (draggedIndex && INV_ARTS_OBJ[draggedIndex]?.[23] !== 0 && !(draggedArtId in translist)) {
+      if (draggedIndex && INV_ARTS_OBJ[draggedIndex]?.transfer_ok && !(draggedArtId in translist)) {
         e.preventDefault()
       }
     }
@@ -581,7 +618,9 @@
       await new Promise(r => window.addEventListener("load", r, { once: true }))
     }
 
-    INV_ARTS_OBJ = await getArtsFromPage()
+    const inv = extractInventory()
+    INV_ARTS_OBJ = inv.arts
+    SIGN = inv.sign
     if (!Object.keys(INV_ARTS_OBJ).length) return
 
     const container = $("#inventory_block") || $(".inventory_items_block") || document.body
@@ -591,8 +630,7 @@
 
     const invContainer = $("#inventory_block") || $(".inventory_items_block")
     if (invContainer) {
-      new MutationObserver(async () => {
-        INV_ARTS_OBJ = await getArtsFromPage()
+      new MutationObserver(() => {
         if ($(".filter_tab_active")?.getAttribute("hint") !== "mtrans") {
           setMTransferBadges(getTranslist(), invContainer)
         }
