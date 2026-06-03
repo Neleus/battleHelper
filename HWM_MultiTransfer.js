@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Мультипередача артефактов
-// @version        1.2
+// @version        1.3
 // @match          https://www.heroeswm.ru/inventory.php*
 // @match          https://mirror.heroeswm.ru/inventory.php*
 // @match          https://lordswm.com/inventory.php*
@@ -211,14 +211,19 @@
 
   // ==================== HELPER FUNCTIONS ====================
   const getFriendsList = async () => {
-    const page = await loadPage("friends.php")
-    const matches = [...page.matchAll(/([\wа-яё\-\(\) ]+) \[/gi)]
-    return matches.map(m => `<option value="${m[1]}">${m[1]}</option>`).join("")
+    try {
+      const page = await loadPage("friends.php")
+      if (typeof page !== "string") return ""
+      return [...page.matchAll(/([\wа-яё\-\(\) ]+) \[/gi)].map(m => `<option value="${m[1]}">${m[1]}</option>`).join("")
+    } catch {
+      return ""
+    }
   }
 
   const getIndex = (artId) => Object.keys(INV_ARTS_OBJ).find(t => INV_ARTS_OBJ[t].id == artId) || -1
 
   const parseSuffix = (mods) => {
+    if (typeof mods !== "string" || !mods) return ""
     return [...mods.matchAll(/\w\d+/g)].map(m => `<img src="${IMG_LINK}mods_png/24/${m[0]}.png">`).join("")
   }
 
@@ -363,11 +368,17 @@
       const art = INV_ARTS_OBJ[idx]
       poolData.arts[artId] = { name: art.name + (art.suffix || ""), ppb: translist[artId], dur1: art.durability1, dur2: art.durability2 }
 
+      // Берём картинку из уже отрисованного сайтом тайла — там полный путь
+      // с подпапками (artifacts/events/...). Запасной вариант — по art_id.
+      const realTile = $(`[art_idx="${idx}"]`, container)
+      const imgSrc = realTile?.querySelector(".cre_mon_image2")?.getAttribute("src") || `${IMG_LINK}artifacts/${art.art_id}.png`
+      const modsHtml = realTile?.querySelector(".art_mods")?.innerHTML || parseSuffix(art.suffix)
+
       html += `<div class="inventory_item_div mtrans-item" data-id="${artId}" art_idx="${idx}">`
       html += `<div class="mtrans-dur">${art.durability1}/${art.durability2}</div><input type="checkbox" class="mtrans-chk">`
       html += `<img src="${IMG_LINK}art_fon_100x100.png" height="100%">`
-      html += `<img src="${IMG_LINK}artifacts/${art.art_id}.png" height="100%" class="cre_mon_image2">`
-      html += `<div class="art_mods no-events">${parseSuffix(art.suffix || "")}</div></div>`
+      html += `<img src="${imgSrc}" height="100%" class="cre_mon_image2">`
+      html += `<div class="art_mods no-events">${modsHtml}</div></div>`
     }
 
     html += '</div><div class="mtrans-footer">'
