@@ -3,12 +3,8 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Цена боя и оптимальный слом на рынке
-// @version        1.0
-// @include        https://www.heroeswm.ru/*
-// @include        https://mirror.heroeswm.ru/*
-// @include        https://lordswm.com/*
-// @include        https://my.lordswm.com/*
-// @include        https://www.lordswm.com/*
+// @version        1.1
+// @include        /^https?:\/\/(www|mirror|my)?\.?(heroeswm|lordswm)\.(ru|com)\/(inventory|home|pl_info|pl_info_realty|auction|auction_new_lot|auction_lot_protocol|art_info|mod_workbench|sklad_info|map|house_info|shop|object-info|ecostat|ecostat_details|transfer|el_transfer|vd_send|feb23_send|mart8_send)\.php.*/
 // @grant          GM_deleteValue
 // @grant          GM_getValue
 // @grant          GM_setValue
@@ -84,6 +80,99 @@ const locations = {
     27: [48,50,"Sublime Arbor","SbA","Великое Древо"]
 };
 let playerLocationNumber = getPlayerLocationNumber();
+
+// ==================== СОВМЕСТИМОСТЬ С НОВЫМ ДВИЖКОМ ИНВЕНТАРЯ ====================
+// Раньше инвентарь отдавал глобалы window.arts / arts_c / slots / sign.
+// Новый движок (inventory.js v50, HWM.Inventory) прячет их в замыкание модуля,
+// данные приезжают вызовом HWM.Inventory.bootstrap({...}). Восстанавливаем
+// старые глобалы, декодируя bootstrap по карте art_fields, чтобы весь
+// существующий код (win.arts/arts_c/slots/sign) продолжил работать.
+function _hwmSliceBraces(str, start) {
+    if(start < 0) return null;
+    let depth = 0, inStr = false, esc = false;
+    for(let i = start; i < str.length; i++) {
+        const c = str[i];
+        if(inStr) {
+            if(esc) esc = false;
+            else if(c === "\\") esc = true;
+            else if(c === '"') inStr = false;
+        } else if(c === '"') inStr = true;
+        else if(c === "{") depth++;
+        else if(c === "}" && --depth === 0) return str.slice(start, i + 1);
+    }
+    return null;
+}
+// Строковые поля арта (остальные числовые). Дефолты как в inv_clone_art_defaults:
+// числовые -> 0, строковые -> '', renew_disabled -> 1. Это критично: код местами
+// сравнивает поля через == 0, а undefined == 0 даёт false.
+const _HWM_STRING_ART_FIELDS = { cat:1, name:1, art_id:1, html:1, html_id:1, add_desc:1, add_desc_id:1, crc_link:1, action:1, owner_nik:1, action2:1, exp_time_str:1, suffix:1, time_to_end:1, forge_end_time_str:1, renew_price:1 };
+function _hwmDefaultArtField(field) {
+    if(field === "renew_disabled") return 1;
+    return _HWM_STRING_ART_FIELDS[field] ? "" : 0;
+}
+function _hwmDecodeArtRows(rows, fields) {
+    if(!rows) return [];
+    if(!fields || !fields.length) return rows;
+    return rows.map(function(row) {
+        if(!Array.isArray(row)) return row;
+        const art = {};
+        for(let f = 0; f < fields.length; f++) art[fields[f]] = _hwmDefaultArtField(fields[f]);
+        let len = row.length;
+        const tail = len ? row[len - 1] : null;
+        let sparse = null;
+        if(tail && typeof tail === "object" && !Array.isArray(tail) && tail["_"]) { sparse = tail; len--; }
+        for(let j = 0; j < len && j < fields.length; j++) art[fields[j]] = row[j];
+        if(sparse) {
+            for(const key in sparse) {
+                if(key === "_") continue;
+                const fi = parseInt(key, 10);
+                if(fi >= 0 && fi < fields.length) art[fields[fi]] = sparse[key];
+            }
+        }
+        return art;
+    });
+}
+function _hwmFindBootstrapData(root) {
+    const scripts = root && root.querySelectorAll ? root.querySelectorAll("script") : [];
+    for(const s of scripts) {
+        const t = s.textContent || s.innerHTML || "";
+        if(t.indexOf("HWM.Inventory.bootstrap(") === -1) continue;
+        const m = /HWM\.Inventory\.bootstrap\(/.exec(t);
+        const json = _hwmSliceBraces(t, t.indexOf("{", m.index + m[0].length));
+        if(!json) continue;
+        try { return JSON.parse(json); } catch(e) {}
+    }
+    return null;
+}
+function _hwmBuildInventoryState(data) {
+    const arts = _hwmDecodeArtRows(data.arts || [], data.art_fields || []);
+    const slots = [];
+    const src = data.slots || {};
+    let maxSlot = 11;
+    for(const k in src) { const n = parseInt(k, 10); if(n > maxSlot) maxSlot = n; }
+    slots.length = maxSlot + 1;
+    for(const k in src) slots[parseInt(k, 10)] = src[k];
+    return { arts: arts, arts_c: (typeof data.arts_c === "number" ? data.arts_c : arts.length), slots: slots, sign: data.sign || "" };
+}
+function ensureLegacyInventoryGlobals() {
+    try {
+        if(win.arts) return; // старый движок ещё на странице — ничего не трогаем
+        const data = _hwmFindBootstrapData(document);
+        if(!data) return;    // не страница инвентаря (нет bootstrap)
+        const st = _hwmBuildInventoryState(data);
+        win.arts = st.arts;
+        win.arts_c = st.arts_c;
+        win.slots = st.slots;
+        if(st.sign && !win.sign) win.sign = st.sign;
+        // Возвращаем старые глобальные функции движка (try_dress, try_undress,
+        // show_arts_in_category, refresh_pl_params и т.п.) для dress-хендлера.
+        if(win.HWM && win.HWM.Inventory && typeof win.HWM.Inventory.installLegacyBridge === "function") {
+            win.HWM.Inventory.installLegacyBridge();
+        }
+    } catch(e) { console.log("ensureLegacyInventoryGlobals error:", e); }
+}
+ensureLegacyInventoryGlobals();
+
 if(win.sign) {
     setValue("PlayerSign", win.sign);
 }
@@ -3958,12 +4047,15 @@ function massAcceptControl() {
                     mayAccept--;
                 }
             }
-            // Обновляем с сервера список артов
+            // Обновляем с сервера список артов (новый движок: пере-декодируем bootstrap)
             const freshInventoryDoc = await getRequest("/inventory.php");
-            const oldArtsScript = [...document.querySelectorAll("script")].find(x => x.innerHTML.includes("var arts=new Array();"));
-            const freshArtsScript = [...freshInventoryDoc.querySelectorAll("script")].find(x => x.innerHTML.includes("var arts=new Array();"));
-            
-            replaceScript(oldArtsScript, freshArtsScript);
+            const freshData = _hwmFindBootstrapData(freshInventoryDoc);
+            if(freshData) {
+                const st = _hwmBuildInventoryState(freshData);
+                win.arts = st.arts;
+                win.arts_c = st.arts_c;
+                win.slots = st.slots;
+            }
             // Перенос в корзину
             const acceptedArts = [...win.arts].filter(x => !currentArtsIds.includes(x.id));
             console.log(acceptedArts);
