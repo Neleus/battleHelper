@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Мультипередача артефактов
-// @version        1.3
+// @version        1.4
 // @match          https://www.heroeswm.ru/inventory.php*
 // @match          https://mirror.heroeswm.ru/inventory.php*
 // @match          https://lordswm.com/inventory.php*
@@ -61,6 +61,8 @@
       to { outline: 4px dashed #aac7f5ff; }
     }
     .mtrans-footer input, .mtrans-footer select { margin: 5px 0; }
+    .mtrans-rep { display: inline-block; font-size: 11px; margin: 4px 0; cursor: pointer; }
+    .mtrans-rep input { width: auto !important; margin: 0 4px 0 0 !important; vertical-align: middle; }
     #btn_transfer { margin-top: 10px; padding: 4px; width: 100%; }
     .mtrans-header { width: 235px; text-align: center; }
     #art-name { height: 30px; font-weight: bold; word-wrap: break-word; font-size: 12px; }
@@ -325,6 +327,7 @@
     errorDiv.innerHTML = "<br>"
 
     const sign = SIGN
+    const rep = poolData.allowRepair ? "&rep=on" : ""
     const step = 100 / poolData.selected.length
 
     for (let artId of poolData.selected) {
@@ -332,7 +335,7 @@
         method: "POST",
         redirect: "manual",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `id=${artId}&nick=${urlencode(poolData.renter)}&gold=${poolData.arts[artId].summ}&sendtype=2&dtime=${poolData.days}&bcount=${poolData.battles}&rep_price=0&art_id=&sign=${sign}`,
+        body: `id=${artId}&nick=${urlencode(poolData.renter)}&gold=${poolData.arts[artId].summ}&sendtype=2&dtime=${poolData.days}&bcount=${poolData.battles}${rep}&rep_price=0&art_id=&sign=${sign}`,
       })
 
       if (response.ok) {
@@ -353,7 +356,7 @@
 
   // ==================== MULTI TRANSFER PANEL ====================
   const MTPanel = async (container, friendsOptions, translist) => {
-    const poolData = { arts: {}, selected: [], days: 0, hours: 0, battles: 0, renter: "" }
+    const poolData = { arts: {}, selected: [], days: 0, hours: 0, battles: 0, renter: "", allowRepair: getStorage(userID + "_allowRepair", false) }
 
     let html = '<div class="mtrans-container"><div class="mtrans-header"><div id="art-name"></div>'
     html += '<br>Стоимость боя <input id="ppb" type="text" maxlength="4" size="4" placeholder="0">'
@@ -387,7 +390,8 @@
     html += '<input style="width:42px" id="hours" type="text" maxlength="3" placeholder="0"> час.'
     html += ' <input style="width:42px" id="days" type="text" maxlength="3" placeholder="0"> дн.'
     html += ' <input style="width:24px" id="bcount" type="text" maxlength="2" placeholder="0"> боёв<br>'
-    html += 'Стоимость: <span id="summ">0</span> Комиссия: <span id="comm">0</span>'
+    html += 'Стоимость: <span id="summ">0</span> Комиссия: <span id="comm">0</span><br>'
+    html += '<label class="mtrans-rep"><input type="checkbox" id="allow_repair"> разрешить ремонт</label>'
     html += '<button id="btn_transfer">Передать</button></div>'
     html += '<div id="pool" class="mtrans-pool"></div></div><progress class="mtrans-pbar" max="100" value="0"></progress><div id="mtrans-error"></div>'
 
@@ -395,6 +399,8 @@
 
     const renterInput = $("#renter"), bcountInput = $("#bcount")
     const daysInput = $("#days"), hoursInput = $("#hours"), transferBtn = $("#btn_transfer")
+    const allowRepairInput = $("#allow_repair")
+    allowRepairInput.checked = poolData.allowRepair
     let currentItem = $(".mtrans-item")
 
     // Restore session
@@ -423,6 +429,12 @@
 
     // Events
     transferBtn.onclick = () => { transferBtn.disabled = true; transferPool(poolData) }
+
+    allowRepairInput.onchange = () => {
+      poolData.allowRepair = allowRepairInput.checked
+      setStorage(userID + "_allowRepair", poolData.allowRepair)
+      poolToSession(poolData)
+    }
 
     $(".mtrans-arts").onclick = (e) => {
       if (e.target.tagName === "IMG") {
