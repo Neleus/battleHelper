@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Цена боя и оптимальный слом на рынке
-// @version        1.1
+// @version        1.2
 // @include        /^https?:\/\/(www|mirror|my)?\.?(heroeswm|lordswm)\.(ru|com)\/(inventory|home|pl_info|pl_info_realty|auction|auction_new_lot|auction_lot_protocol|art_info|mod_workbench|sklad_info|map|house_info|shop|object-info|ecostat|ecostat_details|transfer|el_transfer|vd_send|feb23_send|mart8_send)\.php.*/
 // @grant          GM_deleteValue
 // @grant          GM_getValue
@@ -5139,7 +5139,7 @@ function getDownloadUrl() {
     return result;
 }
 function getScriptReferenceHtml() { return `<a href="${getDownloadUrl()}" title="${isEn ? "Check for update" : "Проверить обновление скрипта"}" target=_blanc>${GM_info.script.name} ${GM_info.script.version}</a>`; }
-function getSendErrorMailReferenceHtml() { return `<a href="sms-create.php?mailto=${getScriptLastAuthor()}&subject=${isEn ? "Error in" : "Ошибка в"} ${GM_info.script.name} ${GM_info.script.version} (${GM_info.scriptHandler} ${GM_info.version})" target=_blanc>${isEn ? "Bug report" : "Сообщить об ошибке"}</a>`; }
+function getSendErrorMailReferenceHtml() { return `<a href="https://t.me/logind" target=_blank>${isEn ? "Bug report" : "Сообщить об ошибке"}</a>`; }
 // Server time
 function getServerTime() { return Date.now() - parseInt(getValue("ClientServerTimeDifference", 0)); }
 function getGameDate() { return new Date(getServerTime() + 10800000); } // Игра в интерфейсе всегда показывает московское время // Это та дата, которая в toUTCString покажет время по москве
