@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.69
+// @version        0.71
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
@@ -2442,7 +2442,10 @@
                 }
               }
               po = Math.floor((playero - 1) / 2)
-              if (getbtype(btype) == 1 || getbtype(btype) == 3) {
+              // для нестандартной зоны (inserttip!=-1) рисуем её движковым
+              // new_insertion и пропускаем старые btype-формулы; иначе — как раньше.
+              if (typeof new_insertion === "function" && new_insertion(250)) {
+              } else if (getbtype(btype) == 1 || getbtype(btype) == 3) {
                 if (playero > 2) {
                   playero1 = playero + 1
                 } else {
