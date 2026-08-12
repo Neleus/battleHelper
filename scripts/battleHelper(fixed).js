@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.71
+// @version        0.72
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
@@ -36,6 +36,435 @@
     }, interval)
   }
 
+  const BATTLE_HELPER_STORAGE_PREFIX = "battleHelper.settings."
+  const BATTLE_HELPER_STORAGE_KEYS = Object.freeze({
+    noRetaliationBadgeOutlineEnabled:
+      BATTLE_HELPER_STORAGE_PREFIX + "noRetaliationBadgeOutlineEnabled",
+    narrowBattlefield: BATTLE_HELPER_STORAGE_PREFIX + "narrowBattlefield",
+    miniSpells: BATTLE_HELPER_STORAGE_PREFIX + "miniSpells",
+    atbStartDisplay: BATTLE_HELPER_STORAGE_PREFIX + "atbStartDisplay",
+    spellsOrder: BATTLE_HELPER_STORAGE_PREFIX + "spellsOrder",
+    moveFastButtons: BATTLE_HELPER_STORAGE_PREFIX + "moveFastButtons",
+    damageTableDisplay: BATTLE_HELPER_STORAGE_PREFIX + "damageTableDisplay",
+    effectsDisplay: BATTLE_HELPER_STORAGE_PREFIX + "effectsDisplay",
+  })
+
+  function readBattleHelperSetting(storageKey) {
+    if (!storageKey) return null
+    try {
+      return localStorage.getItem(storageKey)
+    } catch (error) {
+      // Ошибка хранилища не должна влиять на бой.
+    }
+    return null
+  }
+
+  function writeBattleHelperSetting(storageKey, value) {
+    if (!storageKey) return
+    try {
+      localStorage.setItem(storageKey, String(value))
+    } catch (error) {
+      // Ошибка хранилища не должна влиять на бой.
+    }
+  }
+
+  // Отслеживает отряды, уже потратившие ответ.
+  function createNoRetaliationTracker() {
+    const BADGE_OUTLINE_COLOR = 0x35d06f
+    const BADGE_OUTLINE_WIDTH = 4
+
+    const spentRetaliationUnitIds = new Set()
+    const unitsHitByCurrentActor = new Set()
+    const pendingPreemptiveRetaliatorIds = new Set()
+    const outlinedUnitsById = new Map()
+    const badgeOutlineByUnit = new WeakMap()
+    const unitsWithBadgeLifecycleHook = new WeakSet()
+
+    let currentActorId = 0
+    let badgeOutlineEnabled = loadEnabledSetting()
+    let errorReported = false
+
+    function reportError(error) {
+      if (errorReported) return
+      errorReported = true
+      console.error("[battleHelper] No-retaliation indicator failed", error)
+    }
+
+    function loadEnabledSetting() {
+      const storedValue = readBattleHelperSetting(
+        BATTLE_HELPER_STORAGE_KEYS.noRetaliationBadgeOutlineEnabled
+      )
+      return storedValue === null ? true : storedValue === "true"
+    }
+
+    function saveEnabledSetting() {
+      writeBattleHelperSetting(
+        BATTLE_HELPER_STORAGE_KEYS.noRetaliationBadgeOutlineEnabled,
+        badgeOutlineEnabled
+      )
+    }
+
+    function getBattleScene() {
+      if (!unsafeWindow.stage) return null
+      return (
+        unsafeWindow.stage[unsafeWindow.war_scr] ||
+        unsafeWindow.stage.pole ||
+        null
+      )
+    }
+
+    function syncCurrentTurn() {
+      const nextActorId = unsafeWindow.atb && unsafeWindow.atb[0]
+      if (!(nextActorId > 0)) return currentActorId
+      if (nextActorId !== currentActorId) {
+        currentActorId = nextActorId
+        spentRetaliationUnitIds.delete(nextActorId)
+        unitsHitByCurrentActor.clear()
+        pendingPreemptiveRetaliatorIds.clear()
+      }
+      return currentActorId
+    }
+
+    function isDefending(unitId) {
+      const effects = unsafeWindow.magic && unsafeWindow.magic[unitId]
+      return Boolean(effects && effects.def)
+    }
+
+    function markRetaliationSpent(scene, unitId) {
+      const unit = scene.obj[unitId]
+      if (!unit || unit.hero || unit.uretalation) return
+      if (unit.takeroots && isDefending(unitId)) return
+      spentRetaliationUnitIds.add(unitId)
+      if (badgeOutlineEnabled) ensureBadgeOutlined(scene, unitId)
+    }
+
+    function trackDamageInternal(scene, victimId) {
+      if (!scene || !scene.obj) return
+      const victim = scene.obj[victimId]
+      if (!victim || victim.magicdamage) return
+
+      const attackerId = victim.damaged
+      if (!(attackerId > 0)) return
+
+      const actorId = syncCurrentTurn()
+      if (!actorId) return
+
+      if (attackerId === actorId) {
+        unitsHitByCurrentActor.add(victimId)
+        if (pendingPreemptiveRetaliatorIds.delete(victimId)) {
+          markRetaliationSpent(scene, victimId)
+        }
+        return
+      }
+
+      if (victimId !== actorId) return
+      if (unitsHitByCurrentActor.has(attackerId)) {
+        markRetaliationSpent(scene, attackerId)
+      } else {
+        pendingPreemptiveRetaliatorIds.add(attackerId)
+      }
+    }
+
+    function forgetDeadUnits(scene) {
+      spentRetaliationUnitIds.forEach(function (unitId) {
+        const unit = scene.obj[unitId]
+        if (!unit || unit.nownumber <= 0) {
+          spentRetaliationUnitIds.delete(unitId)
+        }
+      })
+    }
+
+    function getBadgeParts(unit) {
+      if (
+        !unit ||
+        !unit.number ||
+        !unit.number.number_in ||
+        !unit.number_rect
+      ) {
+        return null
+      }
+      return {
+        container: unit.number.number_in,
+        background: unit.number_rect,
+      }
+    }
+
+    function getObjectCoordinate(target, axis) {
+      const engineGetterName = axis === "x" ? "get_X" : "get_Y"
+      if (typeof unsafeWindow[engineGetterName] === "function") {
+        return Number(unsafeWindow[engineGetterName](target)) || 0
+      }
+      if (typeof target[axis] === "function") {
+        return Number(target[axis]()) || 0
+      }
+      return Number(target[axis]) || 0
+    }
+
+    function getBadgeOutlineGeometry(background) {
+      let bounds = null
+      try {
+        if (typeof background.getLocalBounds === "function") {
+          bounds = background.getLocalBounds()
+        } else if (typeof background.getClientRect === "function") {
+          bounds = background.getClientRect({ skipTransform: true })
+        }
+      } catch (error) {
+        return null
+      }
+      if (!bounds || !(bounds.width > 0) || !(bounds.height > 0)) return null
+
+      const halfOutlineWidth = BADGE_OUTLINE_WIDTH / 2
+      const left =
+        getObjectCoordinate(background, "x") +
+        (Number(bounds.x) || 0) -
+        halfOutlineWidth
+      const top =
+        getObjectCoordinate(background, "y") +
+        (Number(bounds.y) || 0) -
+        halfOutlineWidth
+      const right = left + bounds.width + BADGE_OUTLINE_WIDTH
+      const bottom = top + bounds.height + BADGE_OUTLINE_WIDTH
+      const points = [left, top, right, top, right, bottom, left, bottom]
+      return {
+        key: points.join(","),
+        points: points,
+      }
+    }
+
+    function recacheBadge(container) {
+      if (!container) return
+      if (typeof unsafeWindow.set_cache === "function") {
+        unsafeWindow.set_cache(container, true)
+        return
+      }
+      if (container.konva_obj && typeof container.cache === "function") {
+        if (typeof container.clearCache === "function") container.clearCache()
+        container.cache()
+      } else if (container.pixi_obj) {
+        container.cacheAsBitmap = false
+        container.cacheAsBitmap = true
+      }
+    }
+
+    function setDrawingVisible(drawing, visible) {
+      if (!drawing) return
+      if (typeof unsafeWindow.set_visible === "function") {
+        unsafeWindow.set_visible(drawing, visible ? 1 : 0)
+      } else if (drawing.konva_obj && typeof drawing.visible === "function") {
+        drawing.visible(visible)
+      } else {
+        drawing.visible = visible
+      }
+    }
+
+    function createBadgeOutline(container) {
+      if (
+        typeof unsafeWindow.Make_Drawing !== "function" ||
+        typeof unsafeWindow.Make_addChild !== "function"
+      ) {
+        return null
+      }
+      const outline = unsafeWindow.Make_Drawing()
+      outline.closed = true
+      outline.only_rect = true
+      if (outline.konva_obj && typeof outline.listening === "function") {
+        outline.listening(false)
+      } else if (outline.pixi_obj) {
+        outline.interactive = false
+      }
+      unsafeWindow.Make_addChild(container, outline)
+      return outline
+    }
+
+    function getOrCreateBadgeOutline(unit, badgeParts) {
+      let badgeOutline = badgeOutlineByUnit.get(unit)
+      if (badgeOutline && badgeOutline.container === badgeParts.container) {
+        return badgeOutline
+      }
+      if (badgeOutline && typeof badgeOutline.outline.destroy === "function") {
+        badgeOutline.outline.destroy()
+      }
+      const outline = createBadgeOutline(badgeParts.container)
+      if (!outline) return null
+      badgeOutline = {
+        container: badgeParts.container,
+        outline: outline,
+        geometryKey: "",
+        visible: false,
+      }
+      badgeOutlineByUnit.set(unit, badgeOutline)
+      return badgeOutline
+    }
+
+    function updateBadgeOutline(unit, visible) {
+      const badgeParts = getBadgeParts(unit)
+      const existingOutline = badgeOutlineByUnit.get(unit)
+      if (!visible) {
+        if (!existingOutline || !existingOutline.visible) return
+        setDrawingVisible(existingOutline.outline, false)
+        existingOutline.visible = false
+        recacheBadge(existingOutline.container)
+        return
+      }
+      if (!badgeParts || typeof unsafeWindow.drawLine !== "function") return
+
+      const badgeGeometry = getBadgeOutlineGeometry(badgeParts.background)
+      if (!badgeGeometry) return
+      const badgeOutline = getOrCreateBadgeOutline(unit, badgeParts)
+      if (!badgeOutline) return
+
+      const geometryChanged = badgeOutline.geometryKey !== badgeGeometry.key
+      const visibilityChanged = !badgeOutline.visible
+      if (!geometryChanged && !visibilityChanged) return
+
+      if (geometryChanged) {
+        unsafeWindow.drawLine(
+          badgeOutline.outline,
+          badgeGeometry.points,
+          BADGE_OUTLINE_COLOR,
+          BADGE_OUTLINE_WIDTH,
+          1
+        )
+        badgeOutline.geometryKey = badgeGeometry.key
+      }
+      setDrawingVisible(badgeOutline.outline, true)
+      badgeOutline.visible = true
+      recacheBadge(badgeOutline.container)
+    }
+
+    function removeBadgeOutline(outlinedUnit) {
+      if (!outlinedUnit || !outlinedUnit.unit) return
+      updateBadgeOutline(outlinedUnit.unit, false)
+    }
+
+    function hookUnitBadgeLifecycle(unit, unitId) {
+      if (
+        !unit ||
+        typeof unit.set_number !== "function" ||
+        unitsWithBadgeLifecycleHook.has(unit)
+      ) {
+        return
+      }
+
+      const updateEngineBadge = unit.set_number
+      unit.set_number = function () {
+        const result = updateEngineBadge.apply(this, arguments)
+        updateBadgeOutline(
+          this,
+          badgeOutlineEnabled &&
+            spentRetaliationUnitIds.has(unitId) &&
+            this.nownumber > 0
+        )
+        return result
+      }
+      unitsWithBadgeLifecycleHook.add(unit)
+    }
+
+    function ensureBadgeOutlined(scene, unitId) {
+      const unit = scene.obj[unitId]
+      if (!unit) return
+      hookUnitBadgeLifecycle(unit, unitId)
+      updateBadgeOutline(unit, true)
+      outlinedUnitsById.set(unitId, { unit: unit })
+    }
+
+    function reconcileBadgeOutlines(scene) {
+      if (!scene || !scene.obj || !scene.obj_array) {
+        outlinedUnitsById.forEach(removeBadgeOutline)
+        outlinedUnitsById.clear()
+        return
+      }
+
+      forgetDeadUnits(scene)
+      outlinedUnitsById.forEach(function (outlinedUnit, unitId) {
+        if (badgeOutlineEnabled && spentRetaliationUnitIds.has(unitId)) return
+        removeBadgeOutline(outlinedUnit)
+        outlinedUnitsById.delete(unitId)
+      })
+      if (badgeOutlineEnabled) {
+        spentRetaliationUnitIds.forEach(function (unitId) {
+          ensureBadgeOutlined(scene, unitId)
+        })
+      }
+    }
+
+    function createSettingsRow(text, control) {
+      const label = document.createElement("label")
+      label.className = "checkbox_container"
+      label.appendChild(document.createTextNode(text))
+      label.appendChild(control)
+
+      const checkmark = document.createElement("span")
+      checkmark.className = "checkbox_checkmark"
+      label.appendChild(checkmark)
+
+      const row = document.createElement("div")
+      row.className = "info_row"
+      row.appendChild(label)
+      return row
+    }
+
+    function createEnabledCheckbox() {
+      const checkbox = document.createElement("input")
+      checkbox.type = "checkbox"
+      checkbox.id = "noRetaliationBadgeOutlineEnabled_checkbox"
+      checkbox.checked = badgeOutlineEnabled
+      checkbox.addEventListener("change", function () {
+        badgeOutlineEnabled = checkbox.checked
+        saveEnabledSetting()
+        try {
+          reconcileBadgeOutlines(getBattleScene())
+        } catch (error) {
+          reportError(error)
+        }
+      })
+      return checkbox
+    }
+
+    function mountSettings(settingsContainer) {
+      if (!settingsContainer) return
+      const isEnglish = unsafeWindow.lang === 1
+      settingsContainer.appendChild(
+        createSettingsRow(
+          isEnglish
+            ? "Outline count badges of stacks without retaliation in green"
+            : "Обводить зелёным счётчики отрядов без ответа",
+          createEnabledCheckbox()
+        )
+      )
+      settingsContainer.appendChild(document.createElement("br"))
+    }
+
+    function updateInternal(scene) {
+      syncCurrentTurn()
+      reconcileBadgeOutlines(scene)
+    }
+
+    return Object.freeze({
+      mountSettings: function (settingsContainer) {
+        try {
+          mountSettings(settingsContainer)
+        } catch (error) {
+          reportError(error)
+        }
+      },
+      trackDamage: function (scene, victimId) {
+        try {
+          trackDamageInternal(scene, victimId)
+        } catch (error) {
+          reportError(error)
+        }
+      },
+      update: function (scene) {
+        try {
+          updateInternal(scene)
+        } catch (error) {
+          reportError(error)
+        }
+      },
+    })
+  }
+
   let lastMagic_button = document.createElement("div")
   lastMagic_button.style.display = "none"
   lastMagic_button.id = "lastMagic_button"
@@ -59,14 +488,15 @@
       return document.getElementById("like_flash_checkbox")
     },
     function (likeFlashCheckbox) {
-      // Устанавливаем начальное состояние чекбокса из сохраненного значения
-      const savedValue = localStorage.getItem("like_flash")
-      likeFlashCheckbox.checked = savedValue === "true"
+      // Синхронизируем checkbox с настройкой игры.
+      likeFlashCheckbox.checked = unsafeWindow.like_flash === true
 
       likeFlashCheckbox.addEventListener("change", function () {
         unsafeWindow.like_flash = this.checked
-        localStorage.setItem("like_flash", this.checked)
-        hwm_set["like_flash"] = this.checked
+        writeBattleHelperSetting(
+          BATTLE_HELPER_STORAGE_KEYS.narrowBattlefield,
+          this.checked
+        )
         if (typeof unsafeWindow.updateOrientation === "function") {
           unsafeWindow.updateOrientation()
         }
@@ -74,9 +504,11 @@
     }
   )
 
-  // Инициализируем like_flash перед вызовом updateOrientation()
-  const savedLikeFlash = localStorage.getItem("like_flash")
-  unsafeWindow.like_flash = savedLikeFlash === "true"
+  // Загружаем узкое поле до пересчёта ориентации.
+  const savedNarrowBattlefield = readBattleHelperSetting(
+    BATTLE_HELPER_STORAGE_KEYS.narrowBattlefield
+  )
+  unsafeWindow.like_flash = savedNarrowBattlefield === "true"
 
   // updateOrientation — функция игры; ждём, пока она станет доступна.
   whenReady(
@@ -102,6 +534,7 @@
       if (typeof unsafeWindow.lastMagic_button_release !== "undefined") {
         return 0
       }
+      const noRetaliationTracker = createNoRetaliationTracker()
 
       // Функция для получения CDN домена
       const getCdnDomain = () => {
@@ -239,10 +672,19 @@
       unsafeWindow.onkeydown = function (e) {
         if (typeof keys === "undefined") return 0
 
+        // Не перехватываем ввод в чате, повторы и системные сочетания клавиш.
+        const canUseBattleHotkeys =
+          !e.repeat &&
+          !e.ctrlKey &&
+          !e.altKey &&
+          !e.metaKey &&
+          !(typeof chatfocus !== "undefined" && chatfocus)
+
         // Хоткей Shift+A для переключения автобоя
         if (
-          event.shiftKey &&
-          event.code === "KeyA" &&
+          canUseBattleHotkeys &&
+          e.shiftKey &&
+          e.code === "KeyA" &&
           typeof buttons_visible !== "undefined"
         ) {
           const fastBattleOn = document.getElementById("fastbattle_on")
@@ -269,8 +711,8 @@
 
         // Добавляем хоткеи на shift C и F
         if (
-          ((event.shiftKey && event.code === "KeyC") ||
-            event.code === "KeyF") &&
+          canUseBattleHotkeys &&
+          ((e.shiftKey && e.code === "KeyC") || e.code === "KeyF") &&
           typeof buttons_visible !== "undefined" &&
           buttons_visible["lastMagic_button"]
         ) {
@@ -607,13 +1049,22 @@
           }
           kz = 1
           var kz2 = 1
-          if (battle_is_it_perk(activeobj, 110) && stage[war_scr].obj[activeobj].hero) {
+          if (
+            battle_is_it_perk(activeobj, 110) &&
+            stage[war_scr].obj[activeobj].hero
+          ) {
             kz *= 0.8
           }
-          if (battle_is_it_perk(activeobj, 87) && !stage[war_scr].obj[activeobj].hero) {
+          if (
+            battle_is_it_perk(activeobj, 87) &&
+            !stage[war_scr].obj[activeobj].hero
+          ) {
             kz = 0.5
           }
-          if (battle_is_it_perk(activeobj, 111) && stage[war_scr].obj[activeobj].hero) {
+          if (
+            battle_is_it_perk(activeobj, 111) &&
+            stage[war_scr].obj[activeobj].hero
+          ) {
             kz *= 0.8
           }
           if (magic[activeobj]["dnn"]) {
@@ -726,10 +1177,16 @@
               ) {
                 s1 = 4
               }
-              if (battle_is_it_perk(activeobj, 78) && (s == "poison" || s == "mpoison")) {
+              if (
+                battle_is_it_perk(activeobj, 78) &&
+                (s == "poison" || s == "mpoison")
+              ) {
                 s1 += 5
               }
-              if (battle_is_it_perk(activeobj, 89) && (s == "poison" || s == "mpoison")) {
+              if (
+                battle_is_it_perk(activeobj, 89) &&
+                (s == "poison" || s == "mpoison")
+              ) {
                 s1 += 3
               }
               eff =
@@ -1050,15 +1507,16 @@
         miniSpells: false,
         atbStartDisplay: false,
         spellsOrder: false,
-        like_flash: false,
         moveFastButtons: false,
       }
-      for (let i in hwm_set) {
-        const savedValue = localStorage.getItem(i)
-        if (savedValue === null || savedValue === undefined) {
-          hwm_set[i] = false
+      for (const settingName in hwm_set) {
+        const savedValue = readBattleHelperSetting(
+          BATTLE_HELPER_STORAGE_KEYS[settingName]
+        )
+        if (savedValue === null) {
+          hwm_set[settingName] = false
         } else {
-          hwm_set[i] = savedValue === "true"
+          hwm_set[settingName] = savedValue === "true"
         }
       }
       unsafeWindow.checkTrue = function (name) {
@@ -1178,7 +1636,7 @@
       unsafeWindow.checkSet = function (name) {
         const checkbox = document.getElementById(name + "_checkbox")
         const newValue = checkbox.checked
-        localStorage.setItem(name, newValue.toString())
+        writeBattleHelperSetting(BATTLE_HELPER_STORAGE_KEYS[name], newValue)
         hwm_set[name] = newValue
         if (name == "atbStartDisplay") {
           setAtbStyle()
@@ -1228,6 +1686,14 @@
         divs[i].prepend(divc[i])
         divs[i].prepend(divt[i])
       }
+      // Прогноз захвата выводится отдельно и только в клановых боях.
+      if (btype == _CLAN_SUR_DEF_PVP) {
+        const capturePercentageRow = document.createElement("div")
+        capturePercentageRow.id = "clan-capture-percentage"
+        capturePercentageRow.classList.add("clan-capture-percentage")
+        capturePercentageRow.style.marginTop = "3px"
+        divs[2].after(capturePercentageRow)
+      }
       div = document.createElement("div")
       div.innerHTML =
         "<div class='info_row' id='atb-start-bonus'><label class='checkbox_container'>Стартовый бонус АТБ<input type='checkbox'" +
@@ -1236,6 +1702,7 @@
         "<div class='info_row' id='move-fast-buttons'><label class='checkbox_container'>Кнопка Автобоя справа<input type='checkbox'" +
         (checkTrue("moveFastButtons") ? " checked " : "") +
         "id='moveFastButtons_checkbox' onchange='checkSet(\"moveFastButtons\")'><span class='checkbox_checkmark'></span></label></div><br>"
+      noRetaliationTracker.mountSettings(div)
       document
         .getElementById("win_Settings")
         .getElementsByTagName("form")[0]
@@ -1255,8 +1722,6 @@
       unsafeWindow.phm = {}
       unsafeWindow.psc = {}
       unsafeWindow.psa = {}
-      unsafeWindow.sHP = [0, 0]
-      unsafeWindow.nHP = [0, 0]
       //unsafeWindow.gate = {};
       unsafeWindow.lastChain = 0
       unsafeWindow.damageTable = ""
@@ -1283,6 +1748,8 @@
         ".hpt {width:100%; height:100%; text-align:center; line-height:15px; font-size:13px; font-weight:bold; color:#fff; position:absolute; z-index:1;}"
       damageTableStyle.innerHTML +=
         ".hpc {width:100%; height:100%; border-radius: 5px; position:absolute;}"
+      damageTableStyle.innerHTML +=
+        ".clan-capture-percentage {width:100%; text-align:center; font-size:13px; font-weight:bold; color:#fff;}"
 
       document.head.appendChild(damageTableStyle)
       effectsDisplay = document.createElement("div")
@@ -1329,35 +1796,87 @@
           div.innerHTML += str
         }
       }
-      unsafeWindow.updateBar = function (ch = 2) {
-        sHP = [0, 0, 0, 0, 0, 0]
-        nHP = [0, 0, 0, 0, 0, 0]
-        for (k in stage.pole.obj) {
-          let ow =
-            ch == 2
-              ? (stage.pole.obj[k].owner % 2) * -1 + 1
-              : +stage.pole.obj[k].owner - 1
+      // Считаем точное HP стартовой армии. Призывы и полностью погибшая,
+      // затем поднятая нежить не участвуют в захвате.
+      unsafeWindow.updateBar = function (sideCount = 2) {
+        const startingHpBySide = Array(sideCount).fill(0)
+        const remainingHpBySide = Array(sideCount).fill(0)
+        const excludedHpBySide = Array(sideCount).fill(0)
+        const livingUnitCountBySide = Array(sideCount).fill(0)
+        const destroyedUnitIds =
+          stage.pole.battleHelperDestroyedUnitIds ||
+          (stage.pole.battleHelperDestroyedUnitIds = new Set())
+
+        for (const unitId in stage.pole.obj) {
+          const unit = stage.pole.obj[unitId]
+          const sideIndex =
+            sideCount == 2 ? (unit.owner % 2) * -1 + 1 : Number(unit.owner) - 1
           if (
-            stage.pole.obj[k].hero != undefined ||
-            stage.pole.obj[k].warmachine != undefined ||
-            stage.pole.obj[k].building != undefined
+            unit.hero != undefined ||
+            unit.warmachine != undefined ||
+            unit.building != undefined
           )
             continue
-          sHP[ow] += stage.pole.obj[k].maxnumber * stage.pole.obj[k].realhealth
-          nHP[ow] +=
-            Math.max(stage.pole.obj[k].nownumber - 1, 0) *
-              stage.pole.obj[k].maxhealth +
-            stage.pole.obj[k].nowhealth
+
+          const currentHp =
+            Math.max(unit.nownumber - 1, 0) * unit.maxhealth + unit.nowhealth
+          if (magic[unitId] && magic[unitId]["sum"]) {
+            excludedHpBySide[sideIndex] += currentHp
+            continue
+          }
+
+          const startingHp = unit.maxnumber * unit.realhealth
+          const currentUnitCount = unit.nownumber
+          if (currentUnitCount <= 0) destroyedUnitIds.add(unitId)
+          const wasDestroyedAndRaised =
+            unit.undead && destroyedUnitIds.has(unitId) && currentUnitCount > 0
+          const captureEligibleArmyValue = wasDestroyedAndRaised ? 0 : currentHp
+          startingHpBySide[sideIndex] += startingHp
+          remainingHpBySide[sideIndex] += captureEligibleArmyValue
+          excludedHpBySide[sideIndex] += Math.max(
+            0,
+            currentHp - captureEligibleArmyValue
+          )
+          livingUnitCountBySide[sideIndex] += currentUnitCount
         }
-        for (let i = 1; i <= ch; i++) {
-          let percentage = (nHP[i - 1] / sHP[i - 1]) * 100
-          document.getElementById("hp" + i + "t").innerHTML = `${nHP[i - 1]}/${
-            sHP[i - 1]
-          } (${percentage.toFixed(2)}%)`
-          document.getElementById("hp" + i + "c").style.width =
-            `${percentage.toFixed(2)}%`
+
+        for (let sideNumber = 1; sideNumber <= sideCount; sideNumber++) {
+          const sideIndex = sideNumber - 1
+          const rawRemainingPercent =
+            startingHpBySide[sideIndex] > 0
+              ? (remainingHpBySide[sideIndex] / startingHpBySide[sideIndex]) *
+                100
+              : 0
+          const remainingPercent = Math.max(0, rawRemainingPercent)
+          const remainingPercentText = remainingPercent.toFixed(2)
+          const barFillPercentText = Math.min(100, remainingPercent).toFixed(2)
+          document.getElementById("hp" + sideNumber + "t").innerHTML =
+            `${remainingHpBySide[sideIndex]}/${startingHpBySide[sideIndex]} (${remainingPercentText}%)` +
+            (excludedHpBySide[sideIndex] > 0
+              ? ` +${excludedHpBySide[sideIndex]}`
+              : "")
+          document.getElementById("hp" + sideNumber + "c").style.width =
+            `${barFillPercentText}%`
+          if (btype == _CLAN_SUR_DEF_PVP && sideNumber == 1) {
+            // Округляем долю выживших, применяем 45% и шаг захвата 3%.
+            const roundedRemainingPercent = Math.round(remainingPercent)
+            let capturePercent =
+              Math.round((roundedRemainingPercent * 0.45) / 3) * 3
+            capturePercent = Math.min(45, capturePercent)
+            if (capturePercent < 3 && livingUnitCountBySide[sideIndex] > 0) {
+              capturePercent = 3
+            }
+            const capturePercentageRow = document.getElementById(
+              "clan-capture-percentage"
+            )
+            if (capturePercentageRow) {
+              capturePercentageRow.textContent =
+                "Захват: " + capturePercent + "%"
+            }
+          }
         }
       }
+      // Фактический захват может быть ограничен остатком предприятия.
       unsafeWindow.infoBlock = function (i = 0) {
         let div = document.getElementById("dop-info")
         if (i == 0) {
@@ -1401,32 +1920,43 @@
         }
         div.innerHTML = str
       }
-      let damageTableDisplay = localStorage.getItem("damage-table-display")
-      if (damageTableDisplay === null || damageTableDisplay === undefined) {
+      let damageTableDisplay = readBattleHelperSetting(
+        BATTLE_HELPER_STORAGE_KEYS.damageTableDisplay
+      )
+      if (damageTableDisplay === null) {
         damageTableDisplay = "table"
       }
       let spanHTML = damageTableDisplay == "table" ? "(скрыть)" : "(показать)"
-      let effectDisplay = localStorage.getItem("effect-display")
-      if (effectDisplay === null || effectDisplay === undefined) {
-        effectDisplay = "block"
+      let effectsPanelDisplayMode = readBattleHelperSetting(
+        BATTLE_HELPER_STORAGE_KEYS.effectsDisplay
+      )
+      if (effectsPanelDisplayMode === null) {
+        effectsPanelDisplayMode = "block"
       }
       div = document.createElement("div")
       div.setAttribute("id", "test")
       div.style.height = "0"
-      div.style.display = effectDisplay
+      div.style.display = effectsPanelDisplayMode
       document.getElementById("effectsDisplay").style.textDecoration =
-        effectDisplay == "none" ? "line-through" : "none"
+        effectsPanelDisplayMode == "none" ? "line-through" : "none"
       document.getElementById("chat_format").prepend(div)
       unsafeWindow.setEffectDisplay = function () {
-        effectDisplay = effectDisplay == "none" ? "block" : "none"
-        localStorage.setItem("effect-display", effectDisplay)
-        document.getElementById("test").style.display = effectDisplay
+        effectsPanelDisplayMode =
+          effectsPanelDisplayMode == "none" ? "block" : "none"
+        writeBattleHelperSetting(
+          BATTLE_HELPER_STORAGE_KEYS.effectsDisplay,
+          effectsPanelDisplayMode
+        )
+        document.getElementById("test").style.display = effectsPanelDisplayMode
         document.getElementById("effectsDisplay").style.textDecoration =
-          effectDisplay == "none" ? "line-through" : "none"
+          effectsPanelDisplayMode == "none" ? "line-through" : "none"
       }
       unsafeWindow.setDamageTableDisplay = function () {
         damageTableDisplay = damageTableDisplay == "table" ? "none" : "table"
-        localStorage.setItem("damage-table-display", damageTableDisplay)
+        writeBattleHelperSetting(
+          BATTLE_HELPER_STORAGE_KEYS.damageTableDisplay,
+          damageTableDisplay
+        )
         document
           .getElementById("win_BattleResult")
           .querySelector("table").style.display = damageTableDisplay
@@ -1468,6 +1998,7 @@
         document.getElementById("damageTable").innerHTML = txt
       }
       stage.pole.procceddamage = unsafeWindow.procceddamage = function (i) {
+        noRetaliationTracker.trackDamage(this, i)
         realDamage = Math.min(
           this.obj[i].damage,
           (this.obj[i].nownumber - 1) * this.obj[i].maxhealth +
@@ -2264,7 +2795,8 @@
           if (
             magicuse != "" &&
             this.obj[activeobj][magicuse + "elem"] == "air" &&
-            ((this.obj[activeobj]["hero"] && battle_is_it_perk(activeobj, 100)) ||
+            ((this.obj[activeobj]["hero"] &&
+              battle_is_it_perk(activeobj, 100)) ||
               this.obj[activeobj]["master_of_storms"])
           ) {
             this.reset_temp_magic()
@@ -2273,7 +2805,8 @@
           if (
             magicuse != "" &&
             (magicuse == "circle_of_winter" || magicuse == "icebolt") &&
-            ((this.obj[activeobj]["hero"] && battle_is_it_perk(activeobj, 99)) ||
+            ((this.obj[activeobj]["hero"] &&
+              battle_is_it_perk(activeobj, 99)) ||
               this.obj[activeobj]["master_of_ice"])
           ) {
             this.reset_temp_magic()
@@ -5685,6 +6218,7 @@
         if (!initialized) {
           return 0
         }
+        noRetaliationTracker.update(this)
         if (soundeff == -1 && btype != 86 && btype != 87 && btype != 82) {
           if (
             typeof unsafeWindow.cordova_client != "undefined" &&
@@ -6288,129 +6822,167 @@
           xp = 0,
           yp = 0
         if (magicuse == "chainlighting") {
-          var lasto = mapobj[xr + yr * defxn]
-          var j = lasto
-          this.obj[j]["attacked2"] = 0
-          var eff = this.obj[activeobj][magicuse + "_magiceff"]
+          let lastTargetId = mapobj[xr + yr * defxn]
+          this.obj[lastTargetId]["attacked2"] = 0
+          let baseChainDamage = this.obj[activeobj][magicuse + "_magiceff"]
           if (this.obj[activeobj]["spmult"] > 1) {
-            eff = Math.round(
+            baseChainDamage = Math.round(
               this.obj[activeobj]["spmult"] *
                 (this.obj[activeobj]["chainlightingeffmain"] +
                   this.obj[activeobj]["chainlightingeffmult"] *
                     Math.pow(this.obj[activeobj]["nownumber"], 0.7))
             )
           }
+          // Урон перехода — прирост общего счётчика после attackmagic.
+          let accumulatedChainDamage = 0
+          const readCurrentHitDamage = () => {
+            const currentHitDamage = Totalmagicdamage - accumulatedChainDamage
+            accumulatedChainDamage = Totalmagicdamage
+            return currentHitDamage
+          }
+          // Считаем потери с учётом здоровья верхнего существа.
+          const calculateDestroyedCreatures = (unitId, damage) => {
+            const target = this.obj[unitId]
+            const targetHp =
+              (target["nownumber"] - 1) * target["maxhealth"] +
+              target["nowhealth"]
+            const appliedDamage = Math.min(damage, targetHp)
+            let destroyedCreatures = Math.floor(
+              appliedDamage / target["maxhealth"]
+            )
+            if (
+              target["nowhealth"] -
+                (appliedDamage - destroyedCreatures * target["maxhealth"]) <=
+              0
+            ) {
+              destroyedCreatures++
+            }
+            return destroyedCreatures
+          }
+          // Формат баджа: номер перехода, урон и потери.
+          const formatChainHitBadge = (unitId, chainPosition, damage) =>
+            "\n#" +
+            chainPosition +
+            " " +
+            damage +
+            "\n†" +
+            calculateDestroyedCreatures(unitId, damage)
+          const drawTemporaryUnitLabel = (unitId, label) => {
+            const unit = this.obj[unitId]
+            const originalUnitCount = unit["nownumber"]
+            unit["nownumber"] = originalUnitCount + label
+            try {
+              unit.set_number()
+            } finally {
+              unit["nownumber"] = originalUnitCount
+            }
+          }
           this.attackmagic(
             i,
             mapobj[xr + yr * defxn],
-            Math.round(eff * mul),
+            Math.round(baseChainDamage * mul),
             "air",
             "lighting",
             0,
             0,
             0
           )
-          let b = this.obj[j]["nownumber"]
-          this.obj[j]["nownumber"] = this.obj[j]["nownumber"] + "\n#" + 1
-          this.obj[j].set_number()
-          this.obj[j]["nownumber"] = b
-          let bDamage = Totalmagicdamage
-          targetMagicdamage = Totalmagicdamage
-          let totalh =
-            (this.obj[j]["nownumber"] - 1) * this.obj[j]["maxhealth"] +
-            this.obj[j]["nowhealth"]
-          targetMagickills = Math.floor(
-            Math.min(targetMagicdamage, totalh) / this.obj[j]["maxhealth"]
+          targetMagicdamage = readCurrentHitDamage()
+          targetMagickills = calculateDestroyedCreatures(
+            lastTargetId,
+            targetMagicdamage
           )
-          let nowhealth =
-            this.obj[j]["nowhealth"] -
-            (Math.min(targetMagicdamage, totalh) -
-              targetMagickills * this.obj[j]["maxhealth"])
-          if (nowhealth <= 0) targetMagickills++
-          this.obj[j]["nownumber"] = b
-          var penalty = Array(1, 0.5, 0.25, 0.125)
-          let ambiguity = []
-          let f = true
-          for (var zz = 1; zz <= 3; zz++) {
-            this.obj[lasto]["attacked"] = 0
-            br = 0
-            bj = 0
-            var len = this.obj_array.length
-            for (var k1 = 0; k1 < len; k1++) {
-              j = this.obj_array[k1]
-              rr =
-                (this.obj[lasto]["x"] - this.obj[j]["x"]) *
-                  (this.obj[lasto]["x"] - this.obj[j]["x"]) +
-                (this.obj[lasto]["y"] - this.obj[j]["y"]) *
-                  (this.obj[lasto]["y"] - this.obj[j]["y"])
+          drawTemporaryUnitLabel(
+            lastTargetId,
+            formatChainHitBadge(lastTargetId, 1, targetMagicdamage)
+          )
+
+          const chainDamageMultipliers = [1, 0.5, 0.25, 0.125]
+          let pathIsCertain = true
+          for (let chainStep = 1; chainStep <= 3; chainStep++) {
+            this.obj[lastTargetId]["attacked"] = 0
+            let nearestDistanceSquared = 0
+            let selectedTargetId = 0
+            let nearestCandidateIds = []
+
+            for (
+              let candidateIndex = 0;
+              candidateIndex < this.obj_array.length;
+              candidateIndex++
+            ) {
+              const candidateId = this.obj_array[candidateIndex]
+              const candidate = this.obj[candidateId]
+              const previousTarget = this.obj[lastTargetId]
+              const distanceSquared =
+                (previousTarget["x"] - candidate["x"]) *
+                  (previousTarget["x"] - candidate["x"]) +
+                (previousTarget["y"] - candidate["y"]) *
+                  (previousTarget["y"] - candidate["y"])
               if (
-                (rr <= br || br == 0) &&
-                this.obj[j]["nownumber"] > 0 &&
-                this.obj[j]["x"] < 20 &&
-                !this.obj[j]["hero"] &&
-                !this.obj[j]["stone"] &&
-                this.obj[j]["y"] >= 0 &&
-                !this.obj[j]["rock"] &&
-                this.obj[j]["attacked2"] == 1
+                (distanceSquared <= nearestDistanceSquared ||
+                  nearestDistanceSquared == 0) &&
+                candidate["nownumber"] > 0 &&
+                candidate["x"] < 20 &&
+                !candidate["hero"] &&
+                !candidate["stone"] &&
+                candidate["y"] >= 0 &&
+                !candidate["rock"] &&
+                candidate["attacked2"] == 1
               ) {
-                if (rr == br) {
-                  ambiguity.push(j)
+                if (distanceSquared == nearestDistanceSquared) {
+                  nearestCandidateIds.push(candidateId)
                 } else {
-                  ambiguity = [j]
+                  nearestCandidateIds = [candidateId]
                 }
-                br = rr
-                bj = j
+                nearestDistanceSquared = distanceSquared
+                selectedTargetId = candidateId
               }
             }
-            if (zz == 1) {
-              console.log(ambiguity)
-              console.log(br)
-            }
-            if (bj > 0) {
-              lasto = bj
-              x1 = this.obj[bj]["x"]
-              y1 = this.obj[bj]["y"]
-              j = bj
-              this.obj[j]["attacked2"] = 0
+
+            if (selectedTargetId > 0) {
+              lastTargetId = selectedTargetId
+              const target = this.obj[selectedTargetId]
+              target["attacked2"] = 0
               this.attackmagic(
                 i,
-                j,
-                Math.floor(Math.round(eff * mul) * penalty[zz]),
+                selectedTargetId,
+                Math.floor(
+                  Math.round(baseChainDamage * mul) *
+                    chainDamageMultipliers[chainStep]
+                ),
                 "air",
                 "lighting",
                 0,
                 0,
                 0
               )
-              let b = this.obj[j]["nownumber"]
-              bDamage = Totalmagicdamage
-              if (!f) {
+              // Обновляем накопленный урон даже без отрисовки баджа.
+              const currentHitDamage = readCurrentHitDamage()
+              if (!pathIsCertain) {
                 continue
               }
-              if (ambiguity.length > 1) {
-                f = false
-                for (let i in ambiguity) {
-                  let b1 = this.obj[ambiguity[i]]["nownumber"]
-                  this.obj[ambiguity[i]]["nownumber"] =
-                    this.obj[ambiguity[i]]["nownumber"] +
-                    "\n#" +
-                    (zz + 1) +
-                    " ???"
-                  this.obj[ambiguity[i]].set_number()
-                  this.obj[ambiguity[i]]["nownumber"] = b1
-                  setshadAbs(
-                    this.obj[ambiguity[i]]["x"],
-                    this.obj[ambiguity[i]]["y"],
-                    1
+              if (nearestCandidateIds.length > 1) {
+                // При равной дистанции цель неизвестна, поэтому урон не выводим.
+                pathIsCertain = false
+                for (const candidateId of nearestCandidateIds) {
+                  const candidate = this.obj[candidateId]
+                  drawTemporaryUnitLabel(
+                    candidateId,
+                    "\n#" + (chainStep + 1) + " ???"
                   )
-                  this.obj[ambiguity[i]]["needSetNumber"] = 1
+                  setshadAbs(candidate["x"], candidate["y"], 1)
+                  candidate["needSetNumber"] = 1
                 }
               } else {
-                this.obj[j]["nownumber"] =
-                  this.obj[j]["nownumber"] + "\n#" + (zz + 1)
-                setshadAbs(x1, y1, 1)
-                this.obj[j].set_number()
-                this.obj[j]["nownumber"] = b
+                drawTemporaryUnitLabel(
+                  selectedTargetId,
+                  formatChainHitBadge(
+                    selectedTargetId,
+                    chainStep + 1,
+                    currentHitDamage
+                  )
+                )
+                setshadAbs(target["x"], target["y"], 1)
               }
             }
           }
@@ -6436,6 +7008,7 @@
         }
         if (ok) showuron(1)
       }
+
       unsafeWindow.setshadAbs = function (x, y, vis) {
         if (!initialized) return 0
         if (shado[y * defxn + x]) {
@@ -7527,89 +8100,118 @@
       location.search.match(/show_for_all=([0-9a-zA-Z]+)/)?.[1] ||
       location.search.match(/show=([0-9a-zA-Z]+)/)?.[1] ||
       ""
-    var att = 0
-    var unit = Array(8).fill("")
-    getAtb(0)
-    document.getElementById("confirm_ins").addEventListener(
-      "click",
-      function () {
-        setTimeout(getAtb(1), 4000)
-      },
-      false
-    )
-    function getAtb(r) {
+    installStartingAtbStyles()
+    loadStartingAtb(false)
+    const confirmDeploymentButton = document.getElementById("confirm_ins")
+    if (confirmDeploymentButton) {
+      confirmDeploymentButton.addEventListener("click", function () {
+        // После подтверждения расстановки бой создаётся с задержкой.
+        setTimeout(() => loadStartingAtb(true), 4000)
+      })
+    }
+
+    function installStartingAtbStyles() {
+      const styleId = "battle-helper-starting-atb-style"
+      if (document.getElementById(styleId)) return
+      const style = document.createElement("style")
+      style.id = styleId
+      style.textContent =
+        ".battle-helper-atb-unit{position:relative;display:inline-block}" +
+        ".battle-helper-atb-value{position:absolute;right:0;bottom:0;" +
+        "color:#f5c140;text-shadow:0 0 3px #000,0 0 3px #000," +
+        "0 0 3px #000,0 0 3px #000;font-size:1rem;font-weight:bold}"
+      ;(document.head || document.documentElement).appendChild(style)
+    }
+
+    function loadStartingAtb(showLoadingError) {
       GM_xmlhttpRequest({
         method: "GET",
         url: "/battle.php?lastturn=-3&warid=" + warid + "&show_for_all=" + key,
-        onload: function (res) {
-          let info =
-            "<style>.cont{position:relative;display:inline-block}.count {position: absolute;right: 0;bottom: 0;color: #f5c140;text-shadow: 0px 0px 3px #000, 0px 0px 3px #000, 0px 0px 3px #000, 0px 0px 3px #000;font-size: 1rem;font-weight: bold;}</style>"
-          if (res.responseText == "t=950turns=") {
-            if (r == 1) {
-              info += "Ошибка загрузки, начните бой и обновите страницу!"
-            } else {
-              return false
-            }
+        onload: function (response) {
+          let panelHtml = ""
+          const battleIsNotReady = response.responseText == "t=950turns="
+          if (battleIsNotReady && !showLoadingError) return
+
+          if (battleIsNotReady) {
+            panelHtml += "Ошибка загрузки, начните бой и обновите страницу!"
           }
-          let data = res.responseText
-            .substring(res.responseText.indexOf(";/") + 2)
-            .split(";")
-          for (let i = 0; i < data.length - 1; i++) {
-            if (data[i].indexOf("|rock|") != -1) {
+
+          // Новый список на каждый запрос исключает дубли отрядов.
+          const unitsByTeam = Array(8).fill("")
+          const recordStart = response.responseText.indexOf(";/")
+          const battleRecords =
+            battleIsNotReady || recordStart < 0
+              ? []
+              : response.responseText.substring(recordStart + 2).split(";")
+
+          for (
+            let recordIndex = 0;
+            recordIndex < battleRecords.length - 1;
+            recordIndex++
+          ) {
+            const battleRecord = battleRecords[recordIndex]
+            if (battleRecord.indexOf("|rock|") != -1) {
               continue
             }
-            let unitNum = Number(data[i].substring(1, 3))
-            let armyNum = Number(data[i].substring(5 + 0 * 6, 5 + 1 * 6)) - 1
-            let count = Number(data[i].substring(5 + 12 * 6, 5 + 13 * 6))
-            let startAtb =
-              100 - Number(data[i].substring(5 + 9 * 6, 5 + 10 * 6))
-            let img
-            if (data[i].indexOf("|hero|") == -1) {
-              img = data[i].substring(5 + 24 * 6, data[i].indexOf("|"))
-            } else {
-              img = data[i].split("|")[8].substring(1)
+
+            const teamIndex = Number(battleRecord.substring(5, 11)) - 1
+            if (teamIndex < 0 || teamIndex >= unitsByTeam.length) {
+              continue
             }
-            img = img.substring(0, img.length - 3)
-            unit[armyNum] +=
-              "<div class = 'cont'><img width = '40px' src='/i/portraits/" +
-              img +
-              "anip40.png'><div class = 'count'>" +
-              startAtb +
+            const startingAtb = 100 - Number(battleRecord.substring(59, 65))
+            let portraitId
+            if (battleRecord.indexOf("|hero|") == -1) {
+              portraitId = battleRecord.substring(
+                149,
+                battleRecord.indexOf("|")
+              )
+            } else {
+              portraitId = battleRecord.split("|")[8].substring(1)
+            }
+            portraitId = portraitId.substring(0, portraitId.length - 3)
+            unitsByTeam[teamIndex] +=
+              "<div class='battle-helper-atb-unit'><img width='40px' src='/i/portraits/" +
+              portraitId +
+              "anip40.png'><div class='battle-helper-atb-value'>" +
+              startingAtb +
               "</div></div>"
           }
-          for (let i = 0; i < unit.length; i++) {
-            if (unit[i] != "") {
-              info += "Команда №" + (i + 1) + "<BR>" + unit[i] + "<BR>"
+
+          for (let teamIndex = 0; teamIndex < unitsByTeam.length; teamIndex++) {
+            if (unitsByTeam[teamIndex] != "") {
+              panelHtml +=
+                "Команда №" +
+                (teamIndex + 1) +
+                "<BR>" +
+                unitsByTeam[teamIndex] +
+                "<BR>"
             }
           }
-          let elem = []
-          elem[0] = document.querySelector("#chat_format")
-          elem[1] = document.querySelector("#chat_format_classic")
-          const atbDiv0 = document.createElement("div")
-          atbDiv0.className = "atb-info"
-          atbDiv0.innerHTML = info
 
-          const atbDiv1 = document.createElement("div")
-          atbDiv1.className = "atb-info"
-          atbDiv1.innerHTML = info
+          // Перед обновлением удаляем прежние панели.
+          document.querySelectorAll(".atb-info").forEach(function (stalePanel) {
+            stalePanel.remove()
+          })
 
-          // Добавляем после всех HP баров
-          const hpBars0 = elem[0].querySelectorAll(".hp")
-          const hpBars1 = elem[1].querySelectorAll(".hp")
+          const chatContainers = [
+            document.querySelector("#chat_format"),
+            document.querySelector("#chat_format_classic"),
+          ].filter(Boolean)
+          chatContainers.forEach(function (chatContainer) {
+            const atbPanel = document.createElement("div")
+            atbPanel.className = "atb-info"
+            atbPanel.innerHTML = panelHtml
 
-          if (hpBars0.length > 0) {
-            const lastHpBar0 = hpBars0[hpBars0.length - 1]
-            lastHpBar0.insertAdjacentElement("afterend", atbDiv0)
-          } else {
-            elem[0].appendChild(atbDiv0)
-          }
-
-          if (hpBars1.length > 0) {
-            const lastHpBar1 = hpBars1[hpBars1.length - 1]
-            lastHpBar1.insertAdjacentElement("afterend", atbDiv1)
-          } else {
-            elem[1].appendChild(atbDiv1)
-          }
+            const hpBars = chatContainer.querySelectorAll(".hp")
+            if (hpBars.length > 0) {
+              hpBars[hpBars.length - 1].insertAdjacentElement(
+                "afterend",
+                atbPanel
+              )
+            } else {
+              chatContainer.appendChild(atbPanel)
+            }
+          })
           setAtbStyle()
         },
       })
