@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.72
+// @version        0.73
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
@@ -82,13 +82,6 @@
 
     let currentActorId = 0
     let badgeOutlineEnabled = loadEnabledSetting()
-    let errorReported = false
-
-    function reportError(error) {
-      if (errorReported) return
-      errorReported = true
-      console.error("[battleHelper] No-retaliation indicator failed", error)
-    }
 
     function loadEnabledSetting() {
       const storedValue = readBattleHelperSetting(
@@ -414,9 +407,7 @@
         saveEnabledSetting()
         try {
           reconcileBadgeOutlines(getBattleScene())
-        } catch (error) {
-          reportError(error)
-        }
+        } catch {}
       })
       return checkbox
     }
@@ -444,23 +435,17 @@
       mountSettings: function (settingsContainer) {
         try {
           mountSettings(settingsContainer)
-        } catch (error) {
-          reportError(error)
-        }
+        } catch {}
       },
       trackDamage: function (scene, victimId) {
         try {
           trackDamageInternal(scene, victimId)
-        } catch (error) {
-          reportError(error)
-        }
+        } catch {}
       },
       update: function (scene) {
         try {
           updateInternal(scene)
-        } catch (error) {
-          reportError(error)
-        }
+        } catch {}
       },
     })
   }
@@ -626,8 +611,6 @@
 
         stage.pole.obj[activeobj]["lastMagicUse"] = magicuse
         stage.pole.obj[activeobj]["lastMagicUse_powered"] = spell_powered[b]
-
-        console.log("lastMagicUse =", stage.pole.obj[activeobj]["lastMagicUse"])
 
         if (
           cast == "explosion" ||
@@ -6505,7 +6488,6 @@
         }
         if (mname == "usd" && stage.pole.obj[i].id != 579) {
           //djinn_vizier ?
-          console.log("1")
           stage.pole.incrementParam(i, "turnCount", -1)
         }
         var s = "",
@@ -7179,7 +7161,6 @@
         ) {
           var obj_id = tointeger(command_new.substr(4, 3))
           if (command_new.substr(1, 3) == "def") {
-            console.log("2")
             this.incrementParam(obj_id, "turnCount", -1)
           }
           command_new = command_new.substr(19)
