@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.73
+// @version        0.74
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
@@ -342,11 +342,12 @@
       const updateEngineBadge = unit.set_number
       unit.set_number = function () {
         const result = updateEngineBadge.apply(this, arguments)
+        const livingCreatureCount = Number.parseInt(this.nownumber, 10)
         updateBadgeOutline(
           this,
           badgeOutlineEnabled &&
             spentRetaliationUnitIds.has(unitId) &&
-            this.nownumber > 0
+            livingCreatureCount > 0
         )
         return result
       }
@@ -1513,7 +1514,7 @@
             : "none"
         }
       }
-      setAtbStyle()
+      unsafeWindow.setAtbStyle()
 
       // Функция перемещения кнопок автобоя в правую панель
       unsafeWindow.moveFastBattleButtons = function () {
@@ -1622,7 +1623,7 @@
         writeBattleHelperSetting(BATTLE_HELPER_STORAGE_KEYS[name], newValue)
         hwm_set[name] = newValue
         if (name == "atbStartDisplay") {
-          setAtbStyle()
+          unsafeWindow.setAtbStyle()
         }
         if (name == "moveFastButtons") {
           if (newValue) {
@@ -8083,25 +8084,36 @@
       ""
     installStartingAtbStyles()
     loadStartingAtb(false)
-    const confirmDeploymentButton = document.getElementById("confirm_ins")
-    if (confirmDeploymentButton) {
-      confirmDeploymentButton.addEventListener("click", function () {
-        // После подтверждения расстановки бой создаётся с задержкой.
-        setTimeout(() => loadStartingAtb(true), 4000)
-      })
-    }
+    whenReady(
+      function () {
+        return document.getElementById("confirm_ins")
+      },
+      function (confirmDeploymentButton) {
+        confirmDeploymentButton.addEventListener("click", function () {
+          // После подтверждения расстановки бой создаётся с задержкой.
+          setTimeout(() => loadStartingAtb(true), 4000)
+        })
+      }
+    )
 
     function installStartingAtbStyles() {
-      const styleId = "battle-helper-starting-atb-style"
-      if (document.getElementById(styleId)) return
-      const style = document.createElement("style")
-      style.id = styleId
-      style.textContent =
-        ".battle-helper-atb-unit{position:relative;display:inline-block}" +
-        ".battle-helper-atb-value{position:absolute;right:0;bottom:0;" +
-        "color:#f5c140;text-shadow:0 0 3px #000,0 0 3px #000," +
-        "0 0 3px #000,0 0 3px #000;font-size:1rem;font-weight:bold}"
-      ;(document.head || document.documentElement).appendChild(style)
+      whenReady(
+        function () {
+          return document.head || document.documentElement
+        },
+        function (styleContainer) {
+          const styleId = "battle-helper-starting-atb-style"
+          if (document.getElementById(styleId)) return
+          const style = document.createElement("style")
+          style.id = styleId
+          style.textContent =
+            ".battle-helper-atb-unit{position:relative;display:inline-block}" +
+            ".battle-helper-atb-value{position:absolute;right:0;bottom:0;" +
+            "color:#f5c140;text-shadow:0 0 3px #000,0 0 3px #000," +
+            "0 0 3px #000,0 0 3px #000;font-size:1rem;font-weight:bold}"
+          styleContainer.appendChild(style)
+        }
+      )
     }
 
     function loadStartingAtb(showLoadingError) {
@@ -8169,15 +8181,25 @@
             }
           }
 
-          // Перед обновлением удаляем прежние панели.
-          document.querySelectorAll(".atb-info").forEach(function (stalePanel) {
-            stalePanel.remove()
-          })
+          mountStartingAtbPanel(panelHtml)
+        },
+      })
+    }
 
+    function mountStartingAtbPanel(panelHtml) {
+      whenReady(
+        function () {
           const chatContainers = [
             document.querySelector("#chat_format"),
             document.querySelector("#chat_format_classic"),
           ].filter(Boolean)
+          return chatContainers.length > 0 ? chatContainers : null
+        },
+        function (chatContainers) {
+          document.querySelectorAll(".atb-info").forEach(function (stalePanel) {
+            stalePanel.remove()
+          })
+
           chatContainers.forEach(function (chatContainer) {
             const atbPanel = document.createElement("div")
             atbPanel.className = "atb-info"
@@ -8193,9 +8215,12 @@
               chatContainer.appendChild(atbPanel)
             }
           })
-          setAtbStyle()
-        },
-      })
+
+          if (typeof unsafeWindow.setAtbStyle === "function") {
+            unsafeWindow.setAtbStyle()
+          }
+        }
+      )
     }
   }
 })()
