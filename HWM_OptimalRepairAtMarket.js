@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Цена боя и оптимальный слом на рынке
-// @version        1.2
+// @version        1.3
 // @include        /^https?:\/\/(www|mirror|my)?\.?(heroeswm|lordswm)\.(ru|com)\/(inventory|home|pl_info|pl_info_realty|auction|auction_new_lot|auction_lot_protocol|art_info|mod_workbench|sklad_info|map|house_info|shop|object-info|ecostat|ecostat_details|transfer|el_transfer|vd_send|feb23_send|mart8_send)\.php.*/
 // @grant          GM_deleteValue
 // @grant          GM_getValue
@@ -2216,7 +2216,7 @@ function addAfterRepairCombatCostToInventory() {
     const smithRecoveryEfficiency = SmithRecoveryEfficiency[parseInt(getPlayerValue("SmithLevel", 9))] / 100;
     //console.log(`addAfterRepairCombatCostToInventory artInfoDivs: ${artInfoDivs.length}`);
     for(const artInfoDiv of artInfoDivs) {
-        const artIndex = parseInt(artInfoDiv.getAttribute("art_idx"));
+        const artIndex = Array.from(win.arts).findIndex(x => x.id == artInfoDiv.getAttribute("inv_uuid")); // art_idx движка расходится со снимком bootstrap после AJAX
         const artInfo = win.arts[artIndex];
         if(!artInfo) { console.log(`artIndex: ${artIndex}`); console.log(artInfoDiv); continue; }
         const artId = artInfo.art_id;
@@ -2258,7 +2258,7 @@ function addBattlePriceToInventory() {
     for(let i = 0; i < win.slots.length; i++) {
         const slot = win.slots[i];
         if(slot) {
-            const artInfo = Array.from(win.arts).find(x => x.id == parseInt(slot));
+            const artInfo = Array.from(win.arts).find(x => x.id == slot);
             if(artInfo) {
                 const artBattleCost = getArtBattleCost(artInfo.art_id, artInfo.id, extractCraftInfo(artInfo.suffix));
                 dressedArtsBattleCost += artBattleCost;
@@ -3431,7 +3431,7 @@ function attachArtTtransferActionsToItems() {
     let artInfoDivs = document.querySelectorAll("div.inventory_item_div.inventory_item2");
     //console.log(`artInfoDivs.length: ${artInfoDivs.length}`);
     for(const artInfoDiv of artInfoDivs) {
-        const artIndex = parseInt(artInfoDiv.getAttribute("art_idx"));
+        const artIndex = Array.from(win.arts).findIndex(x => x.id == artInfoDiv.getAttribute("inv_uuid")); // art_idx движка расходится со снимком bootstrap после AJAX
         const artInfo = win.arts[artIndex];
         if(!artInfo) { console.log(`artIndex: ${artIndex}`); console.log(artInfoDiv);continue; }
         if(artInfo.transfer_ok == 0) {
@@ -3809,10 +3809,10 @@ async function transferArts() {
     insertReceiverName("receiverNames", receiver);
     const selectedArts = document.querySelectorAll("input[name='artSelector']:checked");
     for(const selectedArt of selectedArts) {
-        const artUid = parseInt(selectedArt.getAttribute("artUid"));
+        const artUid = selectedArt.getAttribute("artUid");
         const artId = selectedArt.getAttribute("artId");
         const gold = parseInt(getValue("TransferGold" + artUid) || getValue("TransferGold" + artId)) || 0;
-        await postRequest("/art_transfer.php", `id=${artUid}&nick=${receiver}&gold=${gold}&sendtype=1&dtime=0&bcount=0&rep_price=0&art_id=&sign=${win.sign}`);
+        await postRequest("/art_transfer.php", `id=${encodeURIComponent(artUid)}&nick=${receiver}&gold=${gold}&sendtype=1&dtime=0&bcount=0&rep_price=0&art_id=&sign=${encodeURIComponent(win.sign)}`);
     }
     window.location.reload();
 }
@@ -3827,7 +3827,7 @@ async function transferArtsWithRecall() {
     insertReceiverName("receiverNames", receiver);
     const selectedArts = document.querySelectorAll("input[name='artSelector']:checked");
     for(const selectedArt of selectedArts) {
-        const artUid = parseInt(selectedArt.getAttribute("artUid"));
+        const artUid = selectedArt.getAttribute("artUid");
         const artId = selectedArt.getAttribute("artId");
 
         const gold = parseInt(getValue("TransferGold" + artUid) || getValue("TransferGold" + artId)) || 0;
@@ -3837,7 +3837,7 @@ async function transferArtsWithRecall() {
         //console.log(`artUid: ${artId}, gold: ${gold}, days: ${days}, combats: ${combats}`);
         if(days > 0) {
             //console.log(`id=${artUid}&nick=${receiver}&gold=${gold}&sendtype=2&dtime=${days}&bcount=${combats}${allowRepairing}&rep_price=0&art_id=&sign=${win.sign}`)
-            await postRequest("/art_transfer.php", `id=${artUid}&nick=${receiver}&gold=${gold}&sendtype=2&dtime=${days}&bcount=${combats}${allowRepairing}&rep_price=0&art_id=&sign=${win.sign}`);
+            await postRequest("/art_transfer.php", `id=${encodeURIComponent(artUid)}&nick=${receiver}&gold=${gold}&sendtype=2&dtime=${days}&bcount=${combats}${allowRepairing}&rep_price=0&art_id=&sign=${encodeURIComponent(win.sign)}`);
         }
     }
     window.location.reload();
@@ -4060,7 +4060,7 @@ function massAcceptControl() {
             const acceptedArts = [...win.arts].filter(x => !currentArtsIds.includes(x.id));
             console.log(acceptedArts);
             for(const acceptedArt of acceptedArts) {
-                await getRequest(`/inventory.php?star_to=${acceptedArt.id}&star=3&value=1&js=1&rand=${Math.random() * 1000000}`);
+                await getRequest(`/inventory.php?star_to=${encodeURIComponent(acceptedArt.id)}&star=3&value=1&sign=${encodeURIComponent(win.sign)}&js=1&rand=${Math.random() * 1000000}`);
             }
             location.reload();
         });
@@ -4119,12 +4119,12 @@ async function repairArts() {
     insertReceiverName("receiverNames", receiver);
     const selectedArts = Array.from(document.querySelectorAll("input[name='artSelector']:checked")).filter(x => x.hasAttribute("isBroken"));
     for(const selectedArt of selectedArts) {
-        const artUid = parseInt(selectedArt.getAttribute("artUid"));
+        const artUid = selectedArt.getAttribute("artUid");
         const artId = selectedArt.getAttribute("artId");
         const repairCost = ArtifactInfo[artId].RepairCost;
         const repairPrice = repairCost * repairsPercent / 100;
         //console.log(`artId: ${artId}, repairCost: ${repairCost}, repairsPercent: ${repairsPercent}, repairPrice: ${repairPrice}`);
-        await postRequest("/art_transfer.php", `id=${artUid}&nick=${receiver}&gold=0&sendtype=5&dtime=0&bcount=0&rep_price=${repairPrice}&art_id=&sign=${win.sign}`);
+        await postRequest("/art_transfer.php", `id=${encodeURIComponent(artUid)}&nick=${receiver}&gold=0&sendtype=5&dtime=0&bcount=0&rep_price=${repairPrice}&art_id=&sign=${encodeURIComponent(win.sign)}`);
     }
     window.location.reload();
 }
@@ -4591,7 +4591,7 @@ function kitsDataBind(afterPriceSettingOpen = false) {
             kitsHtml += `<div class='inventory_block' style='font-size: 9pt;'><div id='kitContainer${kitIndex}' style='display: flex; flex-direction: row; flex-wrap: wrap; width: 65%;'>`;
             let kitItemIndex = 0;
             for(const kitItem of kit.Items) {
-                const artUid = parseInt(kitItem);
+                const artUid = kitItem;
                 //console.log(artUid)
                 const artIndex = Array.from(win.arts).findIndex(x => x.id == artUid);
                 let art;
@@ -4667,71 +4667,11 @@ function kitsDataBind(afterPriceSettingOpen = false) {
         });
     }
 }
-async function tryDress(artId) {
-    const art = Array.from(win.arts).find(y => y.id == artId);
-    if(!art) {
-        return;
-    }
-    var k = art['pos_dress'];
-    if(k == 8) {
-        if(win.slots[8]) {
-            if(!win.slots[9]) {
-                k = 9;
-            } else {
-                if(win.last_ring_dress == 8) k = 9;
-            }
-        }
-    }
-    if(!art["dressed"] && (k > 0 || art['action'] == 'open')) {
-        let responseText = await getRequestText(`/inventory.php?dress=${art.id}&js=1&last_ring_dress=${win.last_ring_dress}&rand=${Math.random() * 1000000}`);
-        if(responseText == "fail") {
-            responseText = await getRequestText(`/inventory.php?dress=${art.id}&js=1&last_ring_dress=${win.last_ring_dress}&rand=${Math.random() * 1000000}`);
-        }
-        dressHandle(responseText);
-        if(k == 8 || k == 9) {
-            win.last_ring_dress = k;
-        }
-        win.last_dress = k;
-    }
-}
-function dressHandle(txt) {
-    if (txt == 'fail' || txt.length > 5000) {
-        console.log(txt)
-        //console.log(win.add_url)
-        //window.location = 'inventory.php?1' + win.add_url;
-        return 0;
-    } else if (txt) {
-        var data = txt.split('|');
-        if (data && data[0]) {
-            if (data[0] == 'gift_box_opened_refresh' && data[1]) {
-                window.location = 'inventory.php?gift_box_opened=' + data[1] + win.add_url;
-                return 0;
-            }
-            if (data.length > 20) {
-                window.location = 'inventory.php?1' + win.add_url;
-                return 0;
-            }
-            win.refresh_pl_params(data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11]);
-            for (var i = 0; i < win.arts_c; i++)
-                if (win.arts[i]["id"] == data[1]) {
-                    document.getElementById('slot' + data[0]).innerHTML = win.arts[i]['html'];
-                    document.getElementById('slot' + data[0]).onclick = win.try_undress;
-                    document.getElementById('slot' + data[0]).setAttribute('art_id', win.arts[i]["id"]);
-                    win.arts[i]['dressed'] = data[0];
-                    if (win.slots[data[0]] > 0) win.inv_remove_dress_attr_from_array_by_id(win.slots[data[0]]);
-                    win.slots[data[0]] = win.arts[i]['id'];
-                    break;
-                }
-        }
-        win.show_arts_in_category();
-        win.hide_hwm_hint(this, true);
-    }
-}
 function KitsManager() {
     //console.log(getPlayerValue("Kits"))
     this.Kits = JSON.parse(getPlayerValue("Kits", "[]")).map(x => new Kit(x));
     this.Create = function() {
-        const selectedArts = Array.from(document.querySelectorAll("input[name='artSelector']:checked")).map(x => parseInt(x.getAttribute("artUid")));
+        const selectedArts = Array.from(document.querySelectorAll("input[name='artSelector']:checked")).map(x => x.getAttribute("artUid"));
         if(selectedArts.length > 0) {
             const kit = new Kit(null, selectedArts);
             this.Kits.unshift(kit);
@@ -4740,7 +4680,7 @@ function KitsManager() {
     };
     this.AppendKit = function(kitIndex) {
         const kit = this.Kits[kitIndex];
-        const selectedArts = Array.from(document.querySelectorAll("input[name='artSelector']:checked")).map(x => parseInt(x.getAttribute("artUid")));
+        const selectedArts = Array.from(document.querySelectorAll("input[name='artSelector']:checked")).map(x => x.getAttribute("artUid"));
         selectedArts.filter(x => !kit.Items.includes(x)).forEach(x => { kit.Items.push(x); });
         this.SaveAndDataBind();
     };
@@ -4775,12 +4715,24 @@ function KitsManager() {
             //console.log(`gold: ${gold}, daysNumber: ${kit.DaysNumber}, combatsNumber: ${kit.CombatsNumber}`)
             if(gold > 0 && kit.DaysNumber > 0 && kit.CombatsNumber > 0) {
                 //console.log(`id=${artUid}&nick=${receiver}&gold=${gold}&sendtype=2&dtime=${kit.DaysNumber}&bcount=${kit.CombatsNumber}${allowRepairing}&rep_price=0&art_id=&sign=${win.sign}`)
-                await postRequest("/art_transfer.php", `id=${artUid}&nick=${receiver}&gold=${gold}&sendtype=2&dtime=${kit.DaysNumber}&bcount=${kit.CombatsNumber}${allowRepairing}&rep_price=0&art_id=&sign=${win.sign}`);
+                await postRequest("/art_transfer.php", `id=${encodeURIComponent(artUid)}&nick=${receiver}&gold=${gold}&sendtype=2&dtime=${kit.DaysNumber}&bcount=${kit.CombatsNumber}${allowRepairing}&rep_price=0&art_id=&sign=${encodeURIComponent(win.sign)}`);
             }
         }
         window.location.reload();
     };
-    this.DressKit = function(kitIndex) { this.Kits[kitIndex].Items.forEach(async x => { await tryDress(x); }); };
+    // Протокол inventory.js v66 (inv_send_instant_equipment): dress + sign + заголовок AJAX, ответ JSON.
+    // Запросы строго по очереди, кольца — в слоты 8/9, не занятые кольцами комплекта; затем перезагрузка.
+    this.DressKit = async function(kitIndex) {
+        const arts = this.Kits[kitIndex].Items.map(x => Array.from(win.arts).find(y => y.id == x)).filter(x => x && x.pos_dress > 0);
+        const ringSlots = [8, 9].filter(s => !arts.some(x => x.dressed == s));
+        for(const art of arts.filter(x => !x.dressed)) {
+            let url = `/inventory.php?dress=${encodeURIComponent(art.id)}&with_skill_points=1&sign=${encodeURIComponent(win.sign)}`;
+            const ringSlot = art.pos_dress == 8 && ringSlots.shift();
+            if(ringSlot) url += `&force_ring_slot=${ringSlot}`;
+            await getRequestText(url, undefined, { "X-HWM-Inventory-Ajax": "1" });
+        }
+        location.reload();
+    };
     this.Swap = function(kitIndex, kitNewIndex = 0) {
         kitNewIndex = Math.min(Math.max(kitNewIndex, 0), this.Kits.length - 1);
         if(kitNewIndex != kitIndex) {
@@ -4798,7 +4750,7 @@ function KitsManager() {
 }
 function Kit(kitData, items) {
     [this.DaysNumber, this.CombatsNumber] = kitData ? kitData.slice(-2) : [0, 0];
-    this.Items = kitData ? kitData.slice(0, -2) : items;
+    this.Items = kitData ? kitData.slice(0, -2).map(String) : items; // id предметов теперь строки (inv_uuid), старые комплекты хранили числа
     this.Collect = function() { return [...this.Items, this.DaysNumber, this.CombatsNumber]; };
     this.Cost = function() {
         return this.Items.reduce((t, x) => {
@@ -4921,9 +4873,9 @@ function getRequest(url, overrideMimeType = "text/html; charset=windows-1251") {
         });
     });
 }
-function getRequestText(url, overrideMimeType = "text/html; charset=windows-1251") {
+function getRequestText(url, overrideMimeType = "text/html; charset=windows-1251", headers) {
     return new Promise((resolve, reject) => {
-        GM.xmlHttpRequest({ method: "GET", url: url, overrideMimeType: overrideMimeType,
+        GM.xmlHttpRequest({ method: "GET", url: url, overrideMimeType: overrideMimeType, headers: headers,
             onload: function(response) { resolve(response.responseText); },
             onerror: function(error) { reject(error); }
         });

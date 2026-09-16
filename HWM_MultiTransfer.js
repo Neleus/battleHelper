@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Мультипередача артефактов
-// @version        1.4
+// @version        1.5
 // @match          https://www.heroeswm.ru/inventory.php*
 // @match          https://mirror.heroeswm.ru/inventory.php*
 // @match          https://lordswm.com/inventory.php*
@@ -207,7 +207,12 @@
     try { data = JSON.parse(json) } catch { return { arts: {}, sign: "" } }
     const decoded = decodeArtRows(data.arts || [], data.art_fields || [])
     const obj = {}
-    decoded.forEach((art, idx) => { obj[idx] = art })
+    // Как inv_get_art_html: html или html_id, затем подстановка <!--inv_tpl:key-->
+    const tpls = data.html_templates || {}, htmls = data.art_htmls || {}
+    decoded.forEach((art, idx) => {
+      art.html = String(art.html || htmls[art.html_id] || "").replace(/<!--inv_tpl:([\w-]+)-->/g, (m, k) => tpls[k] ?? m)
+      obj[idx] = art
+    })
     return { arts: obj, sign: data.sign || "" }
   }
 
@@ -223,6 +228,11 @@
   }
 
   const getIndex = (artId) => Object.keys(INV_ARTS_OBJ).find(t => INV_ARTS_OBJ[t].id == artId) || -1
+  const getArt = (artId) => INV_ARTS_OBJ[getIndex(artId)]
+
+  // С inventory.js v66 id предмета — строка (inv_uuid), а art_idx плиток
+  // пересчитывается при AJAX-изменениях и расходится с нашим снимком bootstrap.
+  const tileByArtId = (artId, context) => $(`[inv_uuid="${CSS.escape(artId)}"]`, context)
 
   const parseSuffix = (mods) => {
     if (typeof mods !== "string" || !mods) return ""
@@ -246,8 +256,7 @@
   const setMTransferBadges = (translist, container) => {
     document.querySelectorAll(".mtrans-badge").forEach(el => el.classList.remove("mtrans-badge"))
     for (let artId in translist) {
-      const idx = getIndex(artId)
-      const el = $(`[art_idx="${idx}"]`, container)
+      const el = tileByArtId(artId, container)
       if (el) el.classList.add("mtrans-badge")
     }
   }
@@ -335,7 +344,7 @@
         method: "POST",
         redirect: "manual",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `id=${artId}&nick=${urlencode(poolData.renter)}&gold=${poolData.arts[artId].summ}&sendtype=2&dtime=${poolData.days}&bcount=${poolData.battles}${rep}&rep_price=0&art_id=&sign=${sign}`,
+        body: `id=${encodeURIComponent(artId)}&nick=${urlencode(poolData.renter)}&gold=${poolData.arts[artId].summ}&sendtype=2&dtime=${poolData.days}&bcount=${poolData.battles}${rep}&rep_price=0&art_id=&sign=${encodeURIComponent(sign)}`,
       })
 
       if (response.ok) {
@@ -371,11 +380,13 @@
       const art = INV_ARTS_OBJ[idx]
       poolData.arts[artId] = { name: art.name + (art.suffix || ""), ppb: translist[artId], dur1: art.durability1, dur2: art.durability2 }
 
-      // Берём картинку из уже отрисованного сайтом тайла — там полный путь
-      // с подпапками (artifacts/events/...). Запасной вариант — по art_id.
-      const realTile = $(`[art_idx="${idx}"]`, container)
-      const imgSrc = realTile?.querySelector(".cre_mon_image2")?.getAttribute("src") || `${IMG_LINK}artifacts/${art.art_id}.png`
-      const modsHtml = realTile?.querySelector(".art_mods")?.innerHTML || parseSuffix(art.suffix)
+      // Картинку берём из html арта в bootstrap: там полный путь (artifacts/sh/...,
+      // events/...), который не выводится из art_id. Отрисованного тайла может не
+      // быть — сайт рисует только текущую категорию. <template> картинки не грузит.
+      const artDom = document.createElement("template")
+      artDom.innerHTML = art.html
+      const imgSrc = artDom.content.querySelector(".cre_mon_image2")?.getAttribute("src") || `${IMG_LINK}artifacts/${art.art_id}.png`
+      const modsHtml = artDom.content.querySelector(".art_mods")?.innerHTML || parseSuffix(art.suffix)
 
       html += `<div class="inventory_item_div mtrans-item" data-id="${artId}" art_idx="${idx}">`
       html += `<div class="mtrans-dur">${art.durability1}/${art.durability2}</div><input type="checkbox" class="mtrans-chk">`
@@ -536,13 +547,16 @@
     // Новое меню инвентаря закрывается по mouseup на document.body
     // (body_mouse_up). Поэтому вешаем обработчик на mouseup и гасим
     // всплытие, как это делают штатные кнопки меню (inv_menu_button).
+    // art_idx меню — индекс в живом массиве движка; id берём с плитки с тем же art_idx.
+    const menuArtId = () => $(`[art_idx="${CSS.escape(invMenu.getAttribute("art_idx") || "")}"][inv_uuid]`, container)?.getAttribute("inv_uuid")
+
     btn.onmouseup = (e) => {
       e.stopPropagation()
-      const artIdx = invMenu.getAttribute("art_idx")
-      if (!artIdx || !INV_ARTS_OBJ[artIdx]) return
+      const artId = menuArtId()
+      const art = getArt(artId)
+      if (!art) return
 
-      const artId = INV_ARTS_OBJ[artIdx].id
-      if (!INV_ARTS_OBJ[artIdx].transfer_ok) return alert("Этот артефакт нельзя передать")
+      if (!art.transfer_ok) return alert("Этот артефакт нельзя передать")
 
       const translist = getTranslist()
       if (artId in translist) return alert("Уже в списке мультипередачи")
@@ -558,13 +572,8 @@
     }
 
     const updateVisibility = () => {
-      const artIdx = invMenu.getAttribute("art_idx")
-      if (!artIdx || artIdx === "-1" || !INV_ARTS_OBJ[artIdx]) {
-        btn.style.display = "none"
-        return
-      }
-      const artId = INV_ARTS_OBJ[artIdx].id
-      const canTransfer = !!INV_ARTS_OBJ[artIdx].transfer_ok
+      const artId = menuArtId()
+      const canTransfer = !!getArt(artId)?.transfer_ok
       btn.style.display = (canTransfer && !(artId in getTranslist())) ? "block" : "none"
     }
 
@@ -600,22 +609,16 @@
       }
     }
 
-    let draggedIndex = null, draggedArtId = null
+    let draggedArtId = null
+    const canDrop = () => !!getArt(draggedArtId)?.transfer_ok && !(draggedArtId in translist)
 
     container.ondragstart = (e) => {
-      let target = e.target
-      while (target && !(draggedIndex = target.getAttribute("art_idx"))) target = target.parentNode
-      if (!draggedIndex || !INV_ARTS_OBJ[draggedIndex]) return
-      draggedArtId = INV_ARTS_OBJ[draggedIndex].id
-      if (INV_ARTS_OBJ[draggedIndex].transfer_ok && !(draggedArtId in translist)) {
-        mtransBtn.classList.add("mtrans-btn-anim")
-      }
+      draggedArtId = e.target.closest?.("[inv_uuid]")?.getAttribute("inv_uuid")
+      if (canDrop()) mtransBtn.classList.add("mtrans-btn-anim")
     }
 
     mtransBtn.ondragover = (e) => {
-      if (draggedIndex && INV_ARTS_OBJ[draggedIndex]?.transfer_ok && !(draggedArtId in translist)) {
-        e.preventDefault()
-      }
+      if (canDrop()) e.preventDefault()
     }
 
     document.ondragend = () => mtransBtn.classList.remove("mtrans-btn-anim")
