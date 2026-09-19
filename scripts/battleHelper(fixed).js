@@ -3,7 +3,7 @@
 // @author         Neleus
 // @namespace      Neleus
 // @description    Исправленный и рабочий battleHelper
-// @version        0.74
+// @version        0.75
 // @include        https://www.heroeswm.ru/war.php*
 // @include        https://mirror.heroeswm.ru/war.php*
 // @include        https://lordswm.com/war.php*
@@ -177,7 +177,8 @@
         return null
       }
       return {
-        container: unit.number.number_in,
+        container: unit.number,
+        content: unit.number.number_in,
         background: unit.number_rect,
       }
     }
@@ -193,7 +194,7 @@
       return Number(target[axis]) || 0
     }
 
-    function getBadgeOutlineGeometry(background) {
+    function getBadgeOutlineGeometry(background, content) {
       let bounds = null
       try {
         if (typeof background.getLocalBounds === "function") {
@@ -208,10 +209,12 @@
 
       const halfOutlineWidth = BADGE_OUTLINE_WIDTH / 2
       const left =
+        getObjectCoordinate(content, "x") +
         getObjectCoordinate(background, "x") +
         (Number(bounds.x) || 0) -
         halfOutlineWidth
       const top =
+        getObjectCoordinate(content, "y") +
         getObjectCoordinate(background, "y") +
         (Number(bounds.y) || 0) -
         halfOutlineWidth
@@ -224,18 +227,16 @@
       }
     }
 
-    function recacheBadge(container) {
-      if (!container) return
-      if (typeof unsafeWindow.set_cache === "function") {
-        unsafeWindow.set_cache(container, true)
-        return
-      }
-      if (container.konva_obj && typeof container.cache === "function") {
-        if (typeof container.clearCache === "function") container.clearCache()
-        container.cache()
-      } else if (container.pixi_obj) {
-        container.cacheAsBitmap = false
-        container.cacheAsBitmap = true
+    function refreshBadge(unit) {
+      // Счётчик внутри отряда попадает также в кеш самого существа.
+      // Обновляем его и при появлении обводки, и при её снятии.
+      if (
+        unit.number &&
+        !unit.number.outside &&
+        typeof unit.show_obj === "function"
+      ) {
+        unit.need_refresh = 2
+        unit.show_obj()
       }
     }
 
@@ -265,6 +266,8 @@
       } else if (outline.pixi_obj) {
         outline.interactive = false
       }
+      // Рамка — сосед number_in: его кеш в Pixi обрезает отрицательные
+      // координаты и иначе скрывает верхнюю и левую стороны обводки.
       unsafeWindow.Make_addChild(container, outline)
       return outline
     }
@@ -296,12 +299,15 @@
         if (!existingOutline || !existingOutline.visible) return
         setDrawingVisible(existingOutline.outline, false)
         existingOutline.visible = false
-        recacheBadge(existingOutline.container)
+        refreshBadge(unit)
         return
       }
       if (!badgeParts || typeof unsafeWindow.drawLine !== "function") return
 
-      const badgeGeometry = getBadgeOutlineGeometry(badgeParts.background)
+      const badgeGeometry = getBadgeOutlineGeometry(
+        badgeParts.background,
+        badgeParts.content
+      )
       if (!badgeGeometry) return
       const badgeOutline = getOrCreateBadgeOutline(unit, badgeParts)
       if (!badgeOutline) return
@@ -322,7 +328,7 @@
       }
       setDrawingVisible(badgeOutline.outline, true)
       badgeOutline.visible = true
-      recacheBadge(badgeOutline.container)
+      refreshBadge(unit)
     }
 
     function removeBadgeOutline(outlinedUnit) {
@@ -451,6 +457,250 @@
     })
   }
 
+  // Ожидающий призыв хранится в obj с nownumber == -1; maxnumber уже
+  // содержит рассчитанное сервером количество, как в battle_damage_tooltip.
+  function createGatingTooltip() {
+    let tooltip = null
+    let pointer = null
+    let lastUpdate = 0
+    let lastContentKey = ""
+
+    function getOwnerAppearance(unit) {
+      let color = ""
+      try {
+        if (typeof unit.get_color === "function") {
+          color = unit.get_color()
+        } else if (typeof unsafeWindow.get_color_owner === "function") {
+          color = unsafeWindow.get_color_owner(unit.owner)
+        } else if (unsafeWindow.army_colors) {
+          color = unsafeWindow.army_colors[unit.owner]
+        }
+      } catch {}
+      if (Number.isInteger(color) && color >= 0 && color <= 0xffffff) {
+        color = "#" + color.toString(16).padStart(6, "0")
+      }
+      if (/^#[\da-f]{3}$/i.test(color)) {
+        color = "#" + color.slice(1).replace(/./g, "$&$&")
+      }
+      if (!/^#[\da-f]{6}$/i.test(color)) color = "#f4f6fb"
+
+      // Цвет игрока не меняем. Непрозрачный фон подсказки с большим контрастом
+      // даёт не менее 4.58:1 для любого RGB, включая сторонние палитры.
+      const channels = [1, 3, 5].map(function (offset) {
+        const channel = parseInt(color.slice(offset, offset + 2), 16) / 255
+        return channel <= 0.04045
+          ? channel / 12.92
+          : Math.pow((channel + 0.055) / 1.055, 2.4)
+      })
+      const luminance =
+        channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+      const onBlack = (luminance + 0.05) / 0.05
+      const onWhite = 1.05 / (luminance + 0.05)
+      return {
+        color: color,
+        background: onBlack >= onWhite ? "#000000" : "#ffffff",
+      }
+    }
+
+    function makeText(text, className, style = "") {
+      const element = document.createElement("span")
+      element.className = className
+      element.style.cssText = style
+      element.textContent = text
+      return element
+    }
+
+    function hide() {
+      if (tooltip) tooltip.style.display = "none"
+    }
+
+    function forgetPointer() {
+      pointer = null
+      hide()
+    }
+
+    function render() {
+      const field = document.getElementById(unsafeWindow.war_scr || "pole")
+      const scene =
+        unsafeWindow.stage &&
+        (unsafeWindow.stage[unsafeWindow.war_scr] || unsafeWindow.stage.pole)
+      if (
+        !field ||
+        !scene ||
+        !scene.obj ||
+        unsafeWindow.loading ||
+        unsafeWindow.finished ||
+        typeof unsafeWindow.getxa_from !== "function"
+      ) {
+        hide()
+        return
+      }
+
+      // Проверяем элемент под курсором и при неподвижной мыши: поверх поля
+      // может открыться окно, а сама метка — исчезнуть после призыва.
+      const target = document.elementFromPoint(pointer.x, pointer.y)
+      if (!target || target.tagName !== "CANVAS" || !field.contains(target)) {
+        hide()
+        return
+      }
+      const rect = field.getBoundingClientRect()
+      if (!rect.width || !rect.height) return hide()
+      const ratio = unsafeWindow.MainPixelRatio || 1
+      let x = (pointer.x - rect.left) * ratio
+      let y = (pointer.y - rect.top) * ratio
+      const combatRoot = document.getElementById("combat_root")
+      if (combatRoot && combatRoot.classList.contains("force_landscape")) {
+        // Та же коррекция поворота, что в get_pointer_position_battle игры.
+        const rotatedX = (y / rect.width) * rect.height
+        y = ((rect.height - x / ratio) / rect.height) * rect.width * ratio
+        x = rotatedX
+      }
+      const cell = unsafeWindow.getxa_from(x, y)
+      const cellX = Math.ceil(cell.x)
+      const cellY = Math.ceil(cell.y)
+      if (
+        !(cellX > 0 && cellX <= unsafeWindow.defxn - 2) ||
+        !(cellY > 0 && cellY <= unsafeWindow.defyn)
+      ) {
+        hide()
+        return
+      }
+
+      const gates = Object.values(scene.obj).filter(function (unit) {
+        if (!unit || unit.hero || Number(unit.nownumber) !== -1) return false
+        const count = Number(unit.maxnumber)
+        const width = unit.big || unit.bigx ? 1 : 0
+        const height = unit.big || unit.bigy ? 1 : 0
+        return (
+          Number.isFinite(count) &&
+          count >= 0 &&
+          cellX >= unit.x &&
+          cellX <= Number(unit.x) + width &&
+          cellY >= unit.y &&
+          cellY <= Number(unit.y) + height
+        )
+      })
+      if (!gates.length) return hide()
+
+      const isEnglish = unsafeWindow.lang === 1
+      const entries = gates.map(function (unit) {
+        const heroId = unsafeWindow.heroes && unsafeWindow.heroes[unit.owner]
+        const hero = scene.obj[heroId]
+        return {
+          name: unit.nametxt,
+          count: Number(unit.maxnumber),
+          owner: (hero && hero.nametxt) || "",
+          appearance: getOwnerAppearance(unit),
+        }
+      })
+      const contentKey = JSON.stringify([isEnglish, entries])
+
+      if (!tooltip) {
+        tooltip = document.createElement("div")
+        tooltip.id = "battleHelper-gating-tooltip"
+        tooltip.setAttribute("role", "tooltip")
+        tooltip.style.cssText =
+          "position:fixed;z-index:10000;pointer-events:none;" +
+          "padding:0;border:1px solid #777;" +
+          "font:14px/1.4 Arial,sans-serif;white-space:normal;" +
+          "max-width:min(360px,calc(100vw - 16px));overflow-wrap:anywhere;" +
+          "box-sizing:border-box;"
+        document.body.appendChild(tooltip)
+      }
+      if (lastContentKey !== contentKey) {
+        tooltip.textContent = ""
+        entries.forEach(function (entry) {
+          const section = document.createElement("div")
+          section.className = "battleHelper-gating-entry"
+          section.style.cssText =
+            "padding:4px 6px;background:" + entry.appearance.background + ";" +
+            "color:" +
+            (entry.appearance.background === "#ffffff" ? "#20242b" : "#f4f6fb") +
+            ";"
+          const playerStyle = "color:" + entry.appearance.color + ";"
+          section.appendChild(
+            makeText(
+              isEnglish ? "Gating: " : "Призыв: ",
+              "battleHelper-gating-label"
+            )
+          )
+          section.appendChild(
+            makeText(entry.name, "battleHelper-gating-name", playerStyle)
+          )
+          section.appendChild(
+            makeText(
+              " [" + entry.count + "]",
+              "battleHelper-gating-count",
+              playerStyle
+            )
+          )
+          if (entry.owner) {
+            const ownerLine = document.createElement("div")
+            ownerLine.appendChild(
+              makeText(
+                isEnglish ? "Owner: " : "Владелец: ",
+                "battleHelper-gating-label"
+              )
+            )
+            ownerLine.appendChild(
+              makeText(entry.owner, "battleHelper-gating-owner", playerStyle)
+            )
+            section.appendChild(ownerLine)
+          }
+          tooltip.appendChild(section)
+        })
+        lastContentKey = contentKey
+      }
+      tooltip.style.display = "block"
+      const gap = pointer.touch ? 24 : 14
+      let left = pointer.x + gap
+      let top = pointer.y + gap
+      if (left + tooltip.offsetWidth > window.innerWidth - 8) {
+        left = pointer.x - tooltip.offsetWidth - gap
+      }
+      if (top + tooltip.offsetHeight > window.innerHeight - 8) {
+        top = pointer.y - tooltip.offsetHeight - gap
+      }
+      tooltip.style.left = Math.max(8, left) + "px"
+      tooltip.style.top = Math.max(8, top) + "px"
+    }
+
+    function update(force) {
+      if (!pointer) return
+      const now = Date.now()
+      if (!force && now - lastUpdate < 100) return
+      lastUpdate = now
+      try {
+        render()
+      } catch (error) {
+        hide()
+      }
+    }
+
+    function onPointer(event) {
+      if (event.touches && event.touches.length !== 1) return forgetPointer()
+      const point = event.touches ? event.touches[0] : event
+      pointer = {
+        x: point.clientX,
+        y: point.clientY,
+        touch: Boolean(event.touches),
+      }
+      update(true)
+    }
+
+    ;["mousemove", "touchstart", "touchmove"].forEach(function (name) {
+      document.addEventListener(name, onPointer, { capture: true, passive: true })
+    })
+    document.addEventListener("mouseout", function (event) {
+      if (!event.relatedTarget) forgetPointer()
+    })
+    document.addEventListener("touchcancel", forgetPointer, { passive: true })
+    ;["blur", "resize", "scroll"].forEach(function (name) {
+      window.addEventListener(name, forgetPointer, true)
+    })
+    return { update: update }
+  }
+
   let lastMagic_button = document.createElement("div")
   lastMagic_button.style.display = "none"
   lastMagic_button.id = "lastMagic_button"
@@ -521,6 +771,7 @@
         return 0
       }
       const noRetaliationTracker = createNoRetaliationTracker()
+      const gatingTooltip = createGatingTooltip()
 
       // Функция для получения CDN домена
       const getCdnDomain = () => {
@@ -6203,6 +6454,7 @@
           return 0
         }
         noRetaliationTracker.update(this)
+        gatingTooltip.update()
         if (soundeff == -1 && btype != 86 && btype != 87 && btype != 82) {
           if (
             typeof unsafeWindow.cordova_client != "undefined" &&
