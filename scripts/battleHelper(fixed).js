@@ -71,7 +71,7 @@
   // Отслеживает отряды, уже потратившие ответ.
   function createNoRetaliationTracker() {
     const BADGE_OUTLINE_COLOR = 0x35d06f
-    const BADGE_OUTLINE_WIDTH = 4
+    const BADGE_OUTLINE_WIDTH = 2
 
     const spentRetaliationUnitIds = new Set()
     const unitsHitByCurrentActor = new Set()
